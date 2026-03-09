@@ -72,7 +72,6 @@ def main():
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--description")
     parser.add_argument("--notes")
-    parser.add_argument("--status")
 
     # -- NNN Leases --
     parser.add_argument("--tenant-name")

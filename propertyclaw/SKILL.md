@@ -82,13 +82,13 @@ For all actions: `python3 {baseDir}/scripts/db_query.py --action <action> [flags
 | Action | Required Flags | Optional Flags |
 |--------|---------------|----------------|
 | `prop-add-property` | `--name --company-id --address-line1 --city --state --zip-code` | `--property-type --year-built --total-units --owner-name --management-fee-pct` |
-| `prop-update-property` | `--property-id` | `--name --status --owner-name --management-fee-pct --address-line1 --city --state` |
+| `prop-update-property` | `--property-id` | `--name --property-status --owner-name --management-fee-pct --address-line1 --city --state` |
 | `prop-get-property` | `--property-id` | |
-| `prop-list-properties` | `--company-id` | `--status --state --search --limit --offset` |
+| `prop-list-properties` | `--company-id` | `--property-status --state --search --limit --offset` |
 | `prop-add-unit` | `--property-id --unit-number` | `--unit-type --bedrooms --bathrooms --sq-ft --market-rent` |
-| `prop-update-unit` | `--unit-id` | `--status --market-rent --unit-type --bedrooms` |
+| `prop-update-unit` | `--unit-id` | `--unit-status --market-rent --unit-type --bedrooms` |
 | `prop-get-unit` | `--unit-id` | |
-| `prop-list-units` | `--property-id` | `--status --search --limit --offset` |
+| `prop-list-units` | `--property-id` | `--unit-status --search --limit --offset` |
 | `prop-add-amenity` | `--amenity-name` | `--property-id --unit-id --description` |
 | `prop-list-amenities` | | `--property-id --unit-id` |
 | `prop-delete-amenity` | `--amenity-id` | |
@@ -100,9 +100,9 @@ For all actions: `python3 {baseDir}/scripts/db_query.py --action <action> [flags
 | Action | Required Flags | Optional Flags |
 |--------|---------------|----------------|
 | `prop-add-lease` | `--company-id --property-id --unit-id --customer-id --start-date --monthly-rent` | `--lease-type --end-date --security-deposit-amount` |
-| `prop-update-lease` | `--lease-id` | `--monthly-rent --end-date --status` |
+| `prop-update-lease` | `--lease-id` | `--monthly-rent --end-date --lease-status` |
 | `prop-get-lease` | `--lease-id` | |
-| `prop-list-leases` | `--company-id` | `--property-id --status --customer-id --limit --offset` |
+| `prop-list-leases` | `--company-id` | `--property-id --lease-status --customer-id --limit --offset` |
 | `prop-activate-lease` | `--lease-id` | |
 | `prop-terminate-lease` | `--lease-id --move-out-date` | `--notes` |
 | `prop-add-rent-schedule` | `--lease-id --charge-type --amount` | `--description --frequency --start-date --end-date` |
@@ -120,9 +120,9 @@ For all actions: `python3 {baseDir}/scripts/db_query.py --action <action> [flags
 | Action | Required Flags | Optional Flags |
 |--------|---------------|----------------|
 | `prop-add-application` | `--company-id --property-id --applicant-name` | `--unit-id --applicant-email --applicant-phone --desired-move-in --monthly-income --employer` |
-| `prop-update-application` | `--application-id` | `--status --notes` |
+| `prop-update-application` | `--application-id` | `--application-status --notes` |
 | `prop-get-application` | `--application-id` | |
-| `prop-list-applications` | `--company-id` | `--property-id --status --limit --offset` |
+| `prop-list-applications` | `--company-id` | `--property-id --application-status --limit --offset` |
 | `prop-approve-application` | `--application-id` | |
 | `prop-deny-application` | `--application-id --denial-reason --cra-name` | `--cra-phone --delivery-method` |
 | `prop-add-screening` | `--application-id --screening-type` | `--consent-obtained --notes` |
@@ -136,11 +136,11 @@ For all actions: `python3 {baseDir}/scripts/db_query.py --action <action> [flags
 | Action | Required Flags | Optional Flags |
 |--------|---------------|----------------|
 | `prop-add-work-order` | `--company-id --property-id --description --reported-date` | `--unit-id --customer-id --category --priority --permission-to-enter` |
-| `prop-update-work-order` | `--work-order-id` | `--status --scheduled-date --estimated-cost` |
+| `prop-update-work-order` | `--work-order-id` | `--wo-status --scheduled-date --estimated-cost` |
 | `prop-get-work-order` | `--work-order-id` | |
-| `prop-list-work-orders` | `--company-id` | `--property-id --status --priority --limit --offset` |
+| `prop-list-work-orders` | `--company-id` | `--property-id --wo-status --priority --limit --offset` |
 | `prop-assign-vendor` | `--work-order-id --supplier-id` | `--estimated-arrival` |
-| `prop-update-vendor-assignment` | `--assignment-id` | `--status --actual-arrival` |
+| `prop-update-vendor-assignment` | `--assignment-id` | `--va-status --actual-arrival` |
 | `prop-complete-work-order` | `--work-order-id --actual-cost` | `--purchase-invoice-id --billable-to-tenant` |
 | `prop-add-work-order-item` | `--work-order-id --item-description --item-type --rate` | `--quantity` |
 | `prop-list-work-order-items` | `--work-order-id` | |

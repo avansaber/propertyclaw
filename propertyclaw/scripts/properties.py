@@ -151,10 +151,10 @@ def update_property(conn, args):
         updates.append("management_fee_pct = ?")
         params.append(str(round_currency(to_decimal(args.management_fee_pct))))
         changed.append("management_fee_pct")
-    if args.status is not None:
-        if args.status not in VALID_PROPERTY_STATUSES:
-            err(f"--status must be one of: {', '.join(VALID_PROPERTY_STATUSES)}")
-        updates.append("status = ?"); params.append(args.status); changed.append("status")
+    if args.property_status is not None:
+        if args.property_status not in VALID_PROPERTY_STATUSES:
+            err(f"--property-status must be one of: {', '.join(VALID_PROPERTY_STATUSES)}")
+        updates.append("status = ?"); params.append(args.property_status); changed.append("status")
 
     if not changed:
         err("No fields to update")
@@ -204,8 +204,8 @@ def list_properties(conn, args):
     if args.company_id:
         where.append("p.company_id = ?"); params.append(args.company_id)
 
-    if args.status:
-        where.append("p.status = ?"); params.append(args.status)
+    if args.property_status:
+        where.append("p.status = ?"); params.append(args.property_status)
     if args.state:
         where.append("p.state = ?"); params.append(args.state)
     if args.search:
@@ -310,10 +310,10 @@ def update_unit(conn, args):
         updates.append("market_rent = ?")
         params.append(str(round_currency(to_decimal(args.market_rent))))
         changed.append("market_rent")
-    if args.status is not None:
-        if args.status not in VALID_UNIT_STATUSES:
-            err(f"--status must be one of: {', '.join(VALID_UNIT_STATUSES)}")
-        updates.append("status = ?"); params.append(args.status); changed.append("status")
+    if args.unit_status is not None:
+        if args.unit_status not in VALID_UNIT_STATUSES:
+            err(f"--unit-status must be one of: {', '.join(VALID_UNIT_STATUSES)}")
+        updates.append("status = ?"); params.append(args.unit_status); changed.append("status")
 
     if not changed:
         err("No fields to update")
@@ -357,8 +357,8 @@ def list_units(conn, args):
     if args.property_id:
         where.append("u.property_id = ?"); params.append(args.property_id)
 
-    if args.status:
-        where.append("u.status = ?"); params.append(args.status)
+    if args.unit_status:
+        where.append("u.status = ?"); params.append(args.unit_status)
     if args.search:
         where.append("u.unit_number LIKE ?"); params.append(f"%{args.search}%")
 

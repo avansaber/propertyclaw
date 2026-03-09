@@ -158,8 +158,8 @@ def list_applications(conn, args):
         where.append("a.company_id = ?"); params.append(args.company_id)
     if args.property_id:
         where.append("a.property_id = ?"); params.append(args.property_id)
-    if args.status:
-        where.append("a.status = ?"); params.append(args.status)
+    if args.application_status:
+        where.append("a.status = ?"); params.append(args.application_status)
 
     wc = " AND ".join(where)
     total = conn.execute(f"SELECT COUNT(*) FROM propertyclaw_application a WHERE {wc}", params).fetchone()[0]

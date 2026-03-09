@@ -4,7 +4,7 @@ version: 1.0.0
 description: "Commercial real estate management: NNN leases, CAM reconciliation, tenant improvements"
 author: AvanSaber / Nikhil Jathar
 homepage: https://www.propertyclaw.ai
-source: https://github.com/avansaber/propertyclaw-commercial
+source: https://github.com/avansaber/propertyclaw
 tier: 2
 category: commercial
 requires: [erpclaw-setup]

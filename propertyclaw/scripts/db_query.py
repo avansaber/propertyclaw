@@ -89,7 +89,8 @@ def main():
     parser.add_argument("--owner-name")
     parser.add_argument("--owner-contact")
     parser.add_argument("--management-fee-pct")
-    parser.add_argument("--status")
+    parser.add_argument("--property-status")
+    parser.add_argument("--unit-status")
     parser.add_argument("--unit-id")
     parser.add_argument("--unit-number")
     parser.add_argument("--unit-type")
@@ -109,6 +110,7 @@ def main():
 
     # -- Leases --
     parser.add_argument("--lease-id")
+    parser.add_argument("--lease-status")
     parser.add_argument("--customer-id")
     parser.add_argument("--lease-type")
     parser.add_argument("--start-date")
@@ -137,6 +139,7 @@ def main():
     parser.add_argument("--renewal-id")
 
     # -- Tenants --
+    parser.add_argument("--application-status")
     parser.add_argument("--application-id")
     parser.add_argument("--applicant-name")
     parser.add_argument("--applicant-phone")
@@ -159,6 +162,8 @@ def main():
     parser.add_argument("--expiry-date")
 
     # -- Maintenance --
+    parser.add_argument("--wo-status")
+    parser.add_argument("--va-status")
     parser.add_argument("--work-order-id")
     parser.add_argument("--priority")
     parser.add_argument("--reported-date")

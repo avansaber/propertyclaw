@@ -173,8 +173,8 @@ def list_leases(conn, args):
         where.append("l.company_id = ?"); params.append(args.company_id)
     if args.property_id:
         where.append("l.property_id = ?"); params.append(args.property_id)
-    if args.status:
-        where.append("l.status = ?"); params.append(args.status)
+    if args.lease_status:
+        where.append("l.status = ?"); params.append(args.lease_status)
     if args.customer_id:
         where.append("l.customer_id = ?"); params.append(args.customer_id)
 

@@ -110,10 +110,10 @@ def update_work_order(conn, args):
 
     updates, params, changed = [], [], []
 
-    if args.status is not None:
-        if args.status not in VALID_WO_STATUSES:
-            err(f"--status must be one of: {', '.join(VALID_WO_STATUSES)}")
-        updates.append("status = ?"); params.append(args.status); changed.append("status")
+    if args.wo_status is not None:
+        if args.wo_status not in VALID_WO_STATUSES:
+            err(f"--wo-status must be one of: {', '.join(VALID_WO_STATUSES)}")
+        updates.append("status = ?"); params.append(args.wo_status); changed.append("status")
     if args.category is not None:
         if args.category not in VALID_CATEGORIES:
             err(f"--category must be one of: {', '.join(VALID_CATEGORIES)}")
@@ -193,8 +193,8 @@ def list_work_orders(conn, args):
         where.append("w.company_id = ?"); params.append(args.company_id)
     if args.property_id:
         where.append("w.property_id = ?"); params.append(args.property_id)
-    if args.status:
-        where.append("w.status = ?"); params.append(args.status)
+    if args.wo_status:
+        where.append("w.status = ?"); params.append(args.wo_status)
     if args.priority:
         where.append("w.priority = ?"); params.append(args.priority)
 
@@ -266,10 +266,10 @@ def update_vendor_assignment(conn, args):
 
     updates, params, changed = [], [], []
 
-    if args.status is not None:
-        if args.status not in VALID_VA_STATUSES:
-            err(f"--status must be one of: {', '.join(VALID_VA_STATUSES)}")
-        updates.append("status = ?"); params.append(args.status); changed.append("status")
+    if args.va_status is not None:
+        if args.va_status not in VALID_VA_STATUSES:
+            err(f"--va-status must be one of: {', '.join(VALID_VA_STATUSES)}")
+        updates.append("status = ?"); params.append(args.va_status); changed.append("status")
     if args.actual_arrival is not None:
         updates.append("actual_arrival = ?"); params.append(args.actual_arrival); changed.append("actual_arrival")
 
@@ -281,7 +281,7 @@ def update_vendor_assignment(conn, args):
     conn.execute(f"UPDATE propertyclaw_vendor_assignment SET {', '.join(updates)} WHERE id = ?", params)
 
     # If vendor is on_site, update work order to in_progress
-    if args.status == "on_site":
+    if args.va_status == "on_site":
         conn.execute(
             "UPDATE propertyclaw_work_order SET status = 'in_progress', updated_at = datetime('now') WHERE id = ?",
             (row["work_order_id"],))
