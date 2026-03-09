@@ -2,8 +2,8 @@
 name: propertyclaw
 version: 1.0.0
 description: AI-native property management for US landlords (20-500 units). 66 actions across 5 domains -- properties, leases, tenants, maintenance, trust accounting. Built on ERPClaw foundation with real double-entry GL, FCRA-compliant screening, state-specific late fees, and 1099 reporting.
-author: AvanSaber / Nikhil Jathar
-homepage: https://www.propertyclaw.ai
+author: AvanSaber
+homepage: https://github.com/avansaber/propertyclaw
 source: https://github.com/avansaber/propertyclaw
 tier: 4
 category: property-management
@@ -11,6 +11,8 @@ requires: [erpclaw]
 database: ~/.openclaw/erpclaw/data.sqlite
 user-invocable: true
 tags: [propertyclaw, property-management, real-estate, landlord, leasing, tenant, rent, maintenance, work-order, trust-accounting, security-deposit, 1099, fcra, inspection]
+scripts:
+  - scripts/db_query.py
 metadata: {"openclaw":{"type":"executable","install":{"post":"python3 init_db.py && python3 scripts/db_query.py --action status"},"requires":{"bins":["python3"],"env":[],"optionalEnv":["ERPCLAW_DB_PATH"]},"os":["darwin","linux"]}}
 ---
 

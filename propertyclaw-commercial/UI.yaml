@@ -1,0 +1,85 @@
+ocui_version: "1.0"
+skill: propertyclaw-commercial
+skill_version: "1.0.0"
+display_name: Commercial Real Estate
+icon: building-2
+color: "#0f766e"
+default_entity: nnn_lease
+
+domains:
+  - key: nnn_leases
+    label: NNN Leases
+    entities: [nnn_lease, expense_passthrough]
+  - key: cam
+    label: CAM
+    entities: [cam_pool, cam_expense, cam_allocation]
+  - key: ti
+    label: Tenant Improvements
+    entities: [ti_allowance, ti_draw]
+
+dashboard:
+  kpis:
+    - key: active_nnn_leases
+      label: "Active NNN Leases"
+      type: count
+      action: commercial-list-nnn-leases
+      filter: { status: active }
+      severity: success
+      icon: file-text
+      drill_action: commercial-list-nnn-leases
+      drill_filter: { status: active }
+    - key: cam_pools
+      label: "CAM Pools"
+      type: count
+      action: commercial-list-cam-pools
+      icon: layers
+      drill_action: commercial-list-cam-pools
+    - key: ti_allowances
+      label: "TI Allowances"
+      type: count
+      action: commercial-list-ti-allowances
+      icon: hammer
+      drill_action: commercial-list-ti-allowances
+    - key: expiring_leases
+      label: "Expiring Leases"
+      type: count
+      action: commercial-lease-expiry-schedule
+      severity: warning
+      icon: clock
+      drill_action: commercial-lease-expiry-schedule
+  quick_actions:
+    - action: commercial-add-nnn-lease
+      label: "New NNN Lease"
+      icon: file-text
+    - action: commercial-add-cam-pool
+      label: "New CAM Pool"
+      icon: layers
+    - action: commercial-add-ti-allowance
+      label: "New TI Allowance"
+      icon: hammer
+    - action: commercial-run-cam-reconciliation
+      label: "CAM Reconciliation"
+      icon: calculator
+
+workflows:
+  - after: commercial-add-nnn-lease
+    suggest:
+      - action: commercial-add-expense-passthrough
+        label: "Add expense passthrough"
+        pass: { lease-id: id }
+      - action: commercial-calculate-monthly-charges
+        label: "Calculate monthly charges"
+        pass: { lease-id: id }
+  - after: commercial-add-cam-pool
+    suggest:
+      - action: commercial-add-cam-expense
+        label: "Add CAM expense"
+        pass: { cam-pool-id: id }
+      - action: commercial-add-cam-allocation
+        label: "Allocate to tenants"
+        pass: { cam-pool-id: id }
+  - after: commercial-add-ti-allowance
+    suggest:
+      - action: commercial-add-ti-draw
+        label: "Record TI draw"
+        pass: { ti-allowance-id: id }

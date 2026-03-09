@@ -1,51 +1,19 @@
 ---
 name: propertyclaw-commercial
 version: 1.0.0
-description: "Commercial real estate management: NNN leases, CAM reconciliation, tenant improvements"
-author: AvanSaber / Nikhil Jathar
-homepage: https://www.propertyclaw.ai
+description: "Commercial real estate management: NNN leases, CAM reconciliation, tenant improvements. 31 actions across 3 domains."
+author: AvanSaber
+homepage: https://github.com/avansaber/propertyclaw
 source: https://github.com/avansaber/propertyclaw
 tier: 2
-category: commercial
-requires: [erpclaw-setup]
+category: property-management
+requires: [erpclaw, propertyclaw]
 database: ~/.openclaw/erpclaw/data.sqlite
 user-invocable: true
 tags: [commercial, nnn, triple-net, cam, tenant-improvement, lease, real-estate]
-metadata: {"openclaw":{"type":"executable","install":{"post":"python3 scripts/db_query.py --action status"},"requires":{"bins":["python3"],"env":[],"optionalEnv":["ERPCLAW_DB_PATH"]},"os":["darwin","linux"]}}
 scripts:
   - scripts/db_query.py
-actions:
-  - add-nnn-lease
-  - update-nnn-lease
-  - get-nnn-lease
-  - list-nnn-leases
-  - add-expense-passthrough
-  - list-expense-passthroughs
-  - calculate-monthly-charges
-  - generate-nnn-invoice
-  - nnn-lease-summary
-  - lease-expiry-schedule
-  - add-cam-pool
-  - update-cam-pool
-  - get-cam-pool
-  - list-cam-pools
-  - add-cam-expense
-  - list-cam-expenses
-  - add-cam-allocation
-  - list-cam-allocations
-  - run-cam-reconciliation
-  - cam-reconciliation-report
-  - add-ti-allowance
-  - get-ti-allowance
-  - update-ti-allowance
-  - list-ti-allowances
-  - add-ti-draw
-  - list-ti-draws
-  - ti-summary-report
-  - noi-report
-  - cap-rate-analysis
-  - occupancy-trend
-  - status
+metadata: {"openclaw":{"type":"executable","install":{"post":"python3 scripts/db_query.py --action status"},"requires":{"bins":["python3"],"env":[],"optionalEnv":["ERPCLAW_DB_PATH"]},"os":["darwin","linux"]}}
 ---
 
 # propertyclaw-commercial
@@ -58,7 +26,7 @@ for commercial properties.
 
 - **Local-only**: All data stored in `~/.openclaw/erpclaw/data.sqlite`
 - **Fully offline**: No external API calls, no telemetry, no cloud dependencies
-- **No credentials required**: Uses erpclaw_lib shared library (installed by erpclaw-setup)
+- **No credentials required**: Uses erpclaw_lib shared library (installed by erpclaw)
 - **SQL injection safe**: All database queries use parameterized statements
 
 ## Actions
@@ -102,7 +70,7 @@ for commercial properties.
 
 Requires foundation skills:
 ```
-clawhub install erpclaw-setup
+clawhub install erpclaw
 python3 init_db.py
 clawhub install propertyclaw-commercial
 ```
