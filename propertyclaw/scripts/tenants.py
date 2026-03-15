@@ -21,6 +21,7 @@ try:
     from erpclaw_lib.cross_skill import create_customer, CrossSkillError
     from erpclaw_lib.audit import audit
     from erpclaw_lib.dependencies import check_required_tables
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
 except ImportError:
     import json as _json
     print(_json.dumps({
@@ -52,12 +53,12 @@ def add_application(conn, args):
     if not args.applicant_name:
         err("--applicant-name is required")
 
-    if not conn.execute("SELECT id FROM company WHERE id = ?", (args.company_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("company")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.company_id,)).fetchone():
         err(f"Company {args.company_id} not found")
-    if not conn.execute("SELECT id FROM propertyclaw_property WHERE id = ?", (args.property_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_property")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone():
         err(f"Property {args.property_id} not found")
     if args.unit_id:
-        if not conn.execute("SELECT id FROM propertyclaw_unit WHERE id = ?", (args.unit_id,)).fetchone():
+        if not conn.execute(Q.from_(Table("propertyclaw_unit")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.unit_id,)).fetchone():
             err(f"Unit {args.unit_id} not found")
 
     app_id = str(uuid.uuid4())
@@ -88,8 +89,7 @@ def add_application(conn, args):
 def update_application(conn, args):
     if not args.application_id:
         err("--application-id is required")
-    if not conn.execute("SELECT id FROM propertyclaw_application WHERE id = ?",
-                        (args.application_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_application")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.application_id,)).fetchone():
         err(f"Application {args.application_id} not found")
 
     updates, params, changed = [], [], []
@@ -141,9 +141,7 @@ def get_application(conn, args):
     data = row_to_dict(row)
 
     # Include screenings
-    screenings = conn.execute(
-        "SELECT * FROM propertyclaw_screening_request WHERE application_id = ?",
-        (args.application_id,)).fetchall()
+    screenings = conn.execute(Q.from_(Table("propertyclaw_screening_request")).select(Table("propertyclaw_screening_request").star).where(Field("application_id") == P()).get_sql(), (args.application_id,)).fetchall()
     data["screenings"] = [row_to_dict(s) for s in screenings]
 
     ok(data)
@@ -183,8 +181,7 @@ def approve_application(conn, args):
     if not args.application_id:
         err("--application-id is required")
 
-    app = conn.execute("SELECT * FROM propertyclaw_application WHERE id = ?",
-                       (args.application_id,)).fetchone()
+    app = conn.execute(Q.from_(Table("propertyclaw_application")).select(Table("propertyclaw_application").star).where(Field("id") == P()).get_sql(), (args.application_id,)).fetchone()
     if not app:
         err(f"Application {args.application_id} not found")
     if app["status"] not in ("received", "screening"):
@@ -233,8 +230,7 @@ def deny_application(conn, args):
     if not args.cra_name:
         err("--cra-name is required (FCRA requirement)")
 
-    app = conn.execute("SELECT * FROM propertyclaw_application WHERE id = ?",
-                       (args.application_id,)).fetchone()
+    app = conn.execute(Q.from_(Table("propertyclaw_application")).select(Table("propertyclaw_application").star).where(Field("id") == P()).get_sql(), (args.application_id,)).fetchone()
     if not app:
         err(f"Application {args.application_id} not found")
     if app["status"] not in ("received", "screening"):
@@ -274,8 +270,7 @@ def add_screening(conn, args):
     if args.screening_type not in VALID_SCREENING_TYPES:
         err(f"--screening-type must be one of: {', '.join(VALID_SCREENING_TYPES)}")
 
-    app = conn.execute("SELECT id, status FROM propertyclaw_application WHERE id = ?",
-                       (args.application_id,)).fetchone()
+    app = conn.execute(Q.from_(Table("propertyclaw_application")).select(Field("id"), Field("status")).where(Field("id") == P()).get_sql(), (args.application_id,)).fetchone()
     if not app:
         err(f"Application {args.application_id} not found")
 
@@ -308,8 +303,7 @@ def get_screening(conn, args):
     if not args.screening_id:
         err("--screening-id is required")
 
-    row = conn.execute("SELECT * FROM propertyclaw_screening_request WHERE id = ?",
-                       (args.screening_id,)).fetchone()
+    row = conn.execute(Q.from_(Table("propertyclaw_screening_request")).select(Table("propertyclaw_screening_request").star).where(Field("id") == P()).get_sql(), (args.screening_id,)).fetchone()
     if not row:
         err(f"Screening {args.screening_id} not found")
     ok(row_to_dict(row))
@@ -342,7 +336,7 @@ def add_document(conn, args):
     if args.document_type not in VALID_DOC_TYPES:
         err(f"--document-type must be one of: {', '.join(VALID_DOC_TYPES)}")
 
-    if not conn.execute("SELECT id FROM customer WHERE id = ?", (args.customer_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("customer")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.customer_id,)).fetchone():
         err(f"Customer {args.customer_id} not found")
 
     doc_id = str(uuid.uuid4())
@@ -386,8 +380,7 @@ def list_documents(conn, args):
 def delete_document(conn, args):
     if not args.document_id:
         err("--document-id is required")
-    if not conn.execute("SELECT id FROM propertyclaw_tenant_document WHERE id = ?",
-                        (args.document_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_tenant_document")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.document_id,)).fetchone():
         err(f"Document {args.document_id} not found")
 
     conn.execute("DELETE FROM propertyclaw_tenant_document WHERE id = ?", (args.document_id,))

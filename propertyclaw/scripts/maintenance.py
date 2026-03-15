@@ -21,6 +21,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
     from erpclaw_lib.dependencies import check_required_tables
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
 except ImportError:
     import json as _json
     print(_json.dumps({
@@ -62,9 +63,9 @@ def add_work_order(conn, args):
     if not args.reported_date:
         err("--reported-date is required")
 
-    if not conn.execute("SELECT id FROM company WHERE id = ?", (args.company_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("company")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.company_id,)).fetchone():
         err(f"Company {args.company_id} not found")
-    if not conn.execute("SELECT id FROM propertyclaw_property WHERE id = ?", (args.property_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_property")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone():
         err(f"Property {args.property_id} not found")
 
     category = args.category or "general"
@@ -104,8 +105,7 @@ def add_work_order(conn, args):
 def update_work_order(conn, args):
     if not args.work_order_id:
         err("--work-order-id is required")
-    if not conn.execute("SELECT id FROM propertyclaw_work_order WHERE id = ?",
-                        (args.work_order_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_work_order")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.work_order_id,)).fetchone():
         err(f"Work order {args.work_order_id} not found")
 
     updates, params, changed = [], [], []
@@ -169,9 +169,7 @@ def get_work_order(conn, args):
 
     data = row_to_dict(row)
 
-    items = conn.execute(
-        "SELECT * FROM propertyclaw_work_order_item WHERE work_order_id = ?",
-        (args.work_order_id,)).fetchall()
+    items = conn.execute(Q.from_(Table("propertyclaw_work_order_item")).select(Table("propertyclaw_work_order_item").star).where(Field("work_order_id") == P()).get_sql(), (args.work_order_id,)).fetchall()
     data["items"] = [row_to_dict(i) for i in items]
 
     assignments = conn.execute(
@@ -226,11 +224,10 @@ def assign_vendor(conn, args):
     if not args.supplier_id:
         err("--supplier-id is required")
 
-    wo = conn.execute("SELECT id, status FROM propertyclaw_work_order WHERE id = ?",
-                      (args.work_order_id,)).fetchone()
+    wo = conn.execute(Q.from_(Table("propertyclaw_work_order")).select(Field("id"), Field("status")).where(Field("id") == P()).get_sql(), (args.work_order_id,)).fetchone()
     if not wo:
         err(f"Work order {args.work_order_id} not found")
-    if not conn.execute("SELECT id FROM supplier WHERE id = ?", (args.supplier_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("supplier")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.supplier_id,)).fetchone():
         err(f"Supplier {args.supplier_id} not found")
 
     assignment_id = str(uuid.uuid4())
@@ -259,8 +256,7 @@ def update_vendor_assignment(conn, args):
     if not args.assignment_id:
         err("--assignment-id is required")
 
-    row = conn.execute("SELECT * FROM propertyclaw_vendor_assignment WHERE id = ?",
-                       (args.assignment_id,)).fetchone()
+    row = conn.execute(Q.from_(Table("propertyclaw_vendor_assignment")).select(Table("propertyclaw_vendor_assignment").star).where(Field("id") == P()).get_sql(), (args.assignment_id,)).fetchone()
     if not row:
         err(f"Assignment {args.assignment_id} not found")
 
@@ -299,8 +295,7 @@ def complete_work_order(conn, args):
     if not args.actual_cost:
         err("--actual-cost is required")
 
-    wo = conn.execute("SELECT * FROM propertyclaw_work_order WHERE id = ?",
-                      (args.work_order_id,)).fetchone()
+    wo = conn.execute(Q.from_(Table("propertyclaw_work_order")).select(Table("propertyclaw_work_order").star).where(Field("id") == P()).get_sql(), (args.work_order_id,)).fetchone()
     if not wo:
         err(f"Work order {args.work_order_id} not found")
     if wo["status"] in ("completed", "cancelled"):
@@ -347,8 +342,7 @@ def add_work_order_item(conn, args):
     if args.item_type not in VALID_ITEM_TYPES:
         err(f"--item-type must be one of: {', '.join(VALID_ITEM_TYPES)}")
 
-    if not conn.execute("SELECT id FROM propertyclaw_work_order WHERE id = ?",
-                        (args.work_order_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_work_order")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.work_order_id,)).fetchone():
         err(f"Work order {args.work_order_id} not found")
 
     qty = to_decimal(args.quantity or "1")
@@ -372,9 +366,7 @@ def add_work_order_item(conn, args):
 # ---------------------------------------------------------------------------
 def list_work_order_items(conn, args):
     if args.work_order_id:
-        rows = conn.execute(
-            "SELECT * FROM propertyclaw_work_order_item WHERE work_order_id = ?",
-            (args.work_order_id,)).fetchall()
+        rows = conn.execute(Q.from_(Table("propertyclaw_work_order_item")).select(Table("propertyclaw_work_order_item").star).where(Field("work_order_id") == P()).get_sql(), (args.work_order_id,)).fetchall()
     else:
         rows = conn.execute(
             "SELECT * FROM propertyclaw_work_order_item ORDER BY created_at DESC").fetchall()
@@ -398,7 +390,7 @@ def add_inspection(conn, args):
     if args.inspection_type not in VALID_INSPECTION_TYPES:
         err(f"--inspection-type must be one of: {', '.join(VALID_INSPECTION_TYPES)}")
 
-    if not conn.execute("SELECT id FROM propertyclaw_property WHERE id = ?", (args.property_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_property")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone():
         err(f"Property {args.property_id} not found")
 
     insp_id = str(uuid.uuid4())
@@ -438,9 +430,7 @@ def get_inspection(conn, args):
         err(f"Inspection {args.inspection_id} not found")
 
     data = row_to_dict(row)
-    items = conn.execute(
-        "SELECT * FROM propertyclaw_inspection_item WHERE inspection_id = ?",
-        (args.inspection_id,)).fetchall()
+    items = conn.execute(Q.from_(Table("propertyclaw_inspection_item")).select(Table("propertyclaw_inspection_item").star).where(Field("inspection_id") == P()).get_sql(), (args.inspection_id,)).fetchall()
     data["items"] = [row_to_dict(i) for i in items]
     ok(data)
 
@@ -492,8 +482,7 @@ def add_inspection_item(conn, args):
     if args.condition not in VALID_ITEM_CONDITIONS:
         err(f"--condition must be one of: {', '.join(VALID_ITEM_CONDITIONS)}")
 
-    if not conn.execute("SELECT id FROM propertyclaw_inspection WHERE id = ?",
-                        (args.inspection_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_inspection")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.inspection_id,)).fetchone():
         err(f"Inspection {args.inspection_id} not found")
 
     repair_cost = str(round_currency(to_decimal(args.estimated_repair_cost or "0"))) if args.estimated_repair_cost else None

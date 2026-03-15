@@ -114,8 +114,7 @@ def update_property(conn, args):
     if not args.property_id:
         err("--property-id is required")
 
-    row = conn.execute("SELECT * FROM propertyclaw_property WHERE id = ?",
-                       (args.property_id,)).fetchone()
+    row = conn.execute(Q.from_(Table("propertyclaw_property")).select(Table("propertyclaw_property").star).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone()
     if not row:
         err(f"Property {args.property_id} not found")
 
@@ -176,8 +175,7 @@ def get_property(conn, args):
     if not args.property_id:
         err("--property-id is required")
 
-    row = conn.execute("SELECT * FROM propertyclaw_property WHERE id = ?",
-                       (args.property_id,)).fetchone()
+    row = conn.execute(Q.from_(Table("propertyclaw_property")).select(Table("propertyclaw_property").star).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone()
     if not row:
         err(f"Property {args.property_id} not found")
 
@@ -240,8 +238,7 @@ def add_unit(conn, args):
     if not args.unit_number:
         err("--unit-number is required")
 
-    prop = conn.execute("SELECT id, company_id FROM propertyclaw_property WHERE id = ?",
-                        (args.property_id,)).fetchone()
+    prop = conn.execute(Q.from_(Table("propertyclaw_property")).select(Field("id"), Field("company_id")).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone()
     if not prop:
         err(f"Property {args.property_id} not found")
 
@@ -285,8 +282,7 @@ def update_unit(conn, args):
     if not args.unit_id:
         err("--unit-id is required")
 
-    row = conn.execute("SELECT * FROM propertyclaw_unit WHERE id = ?",
-                       (args.unit_id,)).fetchone()
+    row = conn.execute(Q.from_(Table("propertyclaw_unit")).select(Table("propertyclaw_unit").star).where(Field("id") == P()).get_sql(), (args.unit_id,)).fetchone()
     if not row:
         err(f"Unit {args.unit_id} not found")
 
@@ -392,12 +388,10 @@ def add_amenity(conn, args):
     scope = "unit" if args.unit_id else "property"
 
     if scope == "property":
-        if not conn.execute("SELECT id FROM propertyclaw_property WHERE id = ?",
-                            (args.property_id,)).fetchone():
+        if not conn.execute(Q.from_(Table("propertyclaw_property")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone():
             err(f"Property {args.property_id} not found")
     else:
-        if not conn.execute("SELECT id FROM propertyclaw_unit WHERE id = ?",
-                            (args.unit_id,)).fetchone():
+        if not conn.execute(Q.from_(Table("propertyclaw_unit")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.unit_id,)).fetchone():
             err(f"Unit {args.unit_id} not found")
 
     amenity_id = str(uuid.uuid4())
@@ -437,8 +431,7 @@ def delete_amenity(conn, args):
     if not args.amenity_id:
         err("--amenity-id is required")
 
-    row = conn.execute("SELECT id FROM propertyclaw_amenity WHERE id = ?",
-                       (args.amenity_id,)).fetchone()
+    row = conn.execute(Q.from_(Table("propertyclaw_amenity")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.amenity_id,)).fetchone()
     if not row:
         err(f"Amenity {args.amenity_id} not found")
 
@@ -477,13 +470,9 @@ def add_photo(conn, args):
 # ---------------------------------------------------------------------------
 def list_photos(conn, args):
     if args.unit_id:
-        rows = conn.execute(
-            "SELECT * FROM propertyclaw_property_photo WHERE unit_id = ? ORDER BY uploaded_at DESC",
-            (args.unit_id,)).fetchall()
+        rows = conn.execute(Q.from_(Table("propertyclaw_property_photo")).select(Table("propertyclaw_property_photo").star).where(Field("unit_id") == P()).orderby(Field("uploaded_at"), order=Order.desc).get_sql(), (args.unit_id,)).fetchall()
     elif args.property_id:
-        rows = conn.execute(
-            "SELECT * FROM propertyclaw_property_photo WHERE property_id = ? ORDER BY uploaded_at DESC",
-            (args.property_id,)).fetchall()
+        rows = conn.execute(Q.from_(Table("propertyclaw_property_photo")).select(Table("propertyclaw_property_photo").star).where(Field("property_id") == P()).orderby(Field("uploaded_at"), order=Order.desc).get_sql(), (args.property_id,)).fetchall()
     else:
         rows = conn.execute(
             "SELECT * FROM propertyclaw_property_photo ORDER BY uploaded_at DESC").fetchall()
@@ -498,8 +487,7 @@ def delete_photo(conn, args):
     if not args.photo_id:
         err("--photo-id is required")
 
-    row = conn.execute("SELECT id FROM propertyclaw_property_photo WHERE id = ?",
-                       (args.photo_id,)).fetchone()
+    row = conn.execute(Q.from_(Table("propertyclaw_property_photo")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.photo_id,)).fetchone()
     if not row:
         err(f"Photo {args.photo_id} not found")
 

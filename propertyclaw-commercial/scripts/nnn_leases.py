@@ -16,6 +16,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
 
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
     # Register naming prefixes
     ENTITY_PREFIXES.setdefault("commercial_nnn_lease", "CNNN-")
 except ImportError:
@@ -31,14 +32,18 @@ VALID_EXPENSE_TYPES = ("cam", "insurance", "tax", "utility")
 def _validate_company(conn, company_id):
     if not company_id:
         err("--company-id is required")
-    if not conn.execute("SELECT id FROM company WHERE id = ?", (company_id,)).fetchone():
+    t_co = Table("company")
+    q_co = Q.from_(t_co).select(t_co.id).where(t_co.id == P())
+    if not conn.execute(q_co.get_sql(), (company_id,)).fetchone():
         err(f"Company {company_id} not found")
 
 
 def _validate_lease(conn, lease_id):
     if not lease_id:
         err("--lease-id is required")
-    row = conn.execute("SELECT * FROM commercial_nnn_lease WHERE id = ?", (lease_id,)).fetchone()
+    t = Table("commercial_nnn_lease")
+    q = Q.from_(t).select(t.star).where(t.id == P())
+    row = conn.execute(q.get_sql(), (lease_id,)).fetchone()
     if not row:
         err(f"NNN Lease {lease_id} not found")
     return row

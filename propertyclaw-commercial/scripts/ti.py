@@ -16,6 +16,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
 
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
     # Register naming prefixes
     ENTITY_PREFIXES.setdefault("commercial_ti_allowance", "CTI-")
 except ImportError:
@@ -30,14 +31,18 @@ VALID_DRAW_STATUSES = ("pending", "approved", "paid")
 def _validate_company(conn, company_id):
     if not company_id:
         err("--company-id is required")
-    if not conn.execute("SELECT id FROM company WHERE id = ?", (company_id,)).fetchone():
+    t_co = Table("company")
+    q_co = Q.from_(t_co).select(t_co.id).where(t_co.id == P())
+    if not conn.execute(q_co.get_sql(), (company_id,)).fetchone():
         err(f"Company {company_id} not found")
 
 
 def _validate_lease(conn, lease_id):
     if not lease_id:
         err("--lease-id is required")
-    row = conn.execute("SELECT * FROM commercial_nnn_lease WHERE id = ?", (lease_id,)).fetchone()
+    t = Table("commercial_nnn_lease")
+    q = Q.from_(t).select(t.star).where(t.id == P())
+    row = conn.execute(q.get_sql(), (lease_id,)).fetchone()
     if not row:
         err(f"NNN Lease {lease_id} not found")
     return row
@@ -46,7 +51,9 @@ def _validate_lease(conn, lease_id):
 def _validate_allowance(conn, allowance_id):
     if not allowance_id:
         err("--allowance-id is required")
-    row = conn.execute("SELECT * FROM commercial_ti_allowance WHERE id = ?", (allowance_id,)).fetchone()
+    t = Table("commercial_ti_allowance")
+    q = Q.from_(t).select(t.star).where(t.id == P())
+    row = conn.execute(q.get_sql(), (allowance_id,)).fetchone()
     if not row:
         err(f"TI Allowance {allowance_id} not found")
     return row
@@ -54,9 +61,9 @@ def _validate_allowance(conn, allowance_id):
 
 def _recalc_allowance(conn, allowance_id):
     """Recalculate disbursed and remaining amounts for a TI allowance."""
-    allowance = conn.execute(
-        "SELECT total_allowance FROM commercial_ti_allowance WHERE id = ?",
-        (allowance_id,)).fetchone()
+    t_allow = Table("commercial_ti_allowance")
+    q_allow = Q.from_(t_allow).select(t_allow.total_allowance).where(t_allow.id == P())
+    allowance = conn.execute(q_allow.get_sql(), (allowance_id,)).fetchone()
     total = to_decimal(allowance["total_allowance"])
 
     # Sum approved or paid draws only

@@ -21,6 +21,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
     from erpclaw_lib.dependencies import check_required_tables
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
 except ImportError:
     import json as _json
     print(_json.dumps({
@@ -46,12 +47,12 @@ def setup_trust_account(conn, args):
     if not args.account_id:
         err("--account-id is required")
 
-    if not conn.execute("SELECT id FROM company WHERE id = ?", (args.company_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("company")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.company_id,)).fetchone():
         err(f"Company {args.company_id} not found")
-    if not conn.execute("SELECT id FROM propertyclaw_property WHERE id = ?", (args.property_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_property")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone():
         err(f"Property {args.property_id} not found")
 
-    acct = conn.execute("SELECT id, account_type FROM account WHERE id = ?", (args.account_id,)).fetchone()
+    acct = conn.execute(Q.from_(Table("account")).select(Field("id"), Field("account_type")).where(Field("id") == P()).get_sql(), (args.account_id,)).fetchone()
     if not acct:
         err(f"Account {args.account_id} not found")
     if acct["account_type"] != "trust":
@@ -140,8 +141,7 @@ def generate_owner_statement(conn, args):
     if not args.period_end:
         err("--period-end is required")
 
-    prop = conn.execute("SELECT * FROM propertyclaw_property WHERE id = ?",
-                        (args.property_id,)).fetchone()
+    prop = conn.execute(Q.from_(Table("propertyclaw_property")).select(Table("propertyclaw_property").star).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone()
     if not prop:
         err(f"Property {args.property_id} not found")
 
@@ -241,7 +241,7 @@ def record_security_deposit(conn, args):
     if not args.deposit_date:
         err("--deposit-date is required")
 
-    lease = conn.execute("SELECT * FROM propertyclaw_lease WHERE id = ?", (args.lease_id,)).fetchone()
+    lease = conn.execute(Q.from_(Table("propertyclaw_lease")).select(Table("propertyclaw_lease").star).where(Field("id") == P()).get_sql(), (args.lease_id,)).fetchone()
     if not lease:
         err(f"Lease {args.lease_id} not found")
 
@@ -257,8 +257,7 @@ def record_security_deposit(conn, args):
             trust_account_id = trust["id"]
 
     # Get state for return deadline calculation
-    prop = conn.execute("SELECT state FROM propertyclaw_property WHERE id = ?",
-                        (lease["property_id"],)).fetchone()
+    prop = conn.execute(Q.from_(Table("propertyclaw_property")).select(Field("state")).where(Field("id") == P()).get_sql(), (lease["property_id"],)).fetchone()
     state = prop["state"] if prop else None
 
     # State-specific return deadlines (days after move-out)
@@ -295,8 +294,7 @@ def return_security_deposit(conn, args):
     if not args.return_amount:
         err("--return-amount is required")
 
-    deposit = conn.execute("SELECT * FROM propertyclaw_security_deposit WHERE id = ?",
-                           (args.security_deposit_id,)).fetchone()
+    deposit = conn.execute(Q.from_(Table("propertyclaw_security_deposit")).select(Table("propertyclaw_security_deposit").star).where(Field("id") == P()).get_sql(), (args.security_deposit_id,)).fetchone()
     if not deposit:
         err(f"Security deposit {args.security_deposit_id} not found")
     if deposit["status"] not in ("held", "partially_returned"):
@@ -344,8 +342,7 @@ def add_deposit_deduction(conn, args):
     if args.deduction_type not in valid_types:
         err(f"--deduction-type must be one of: {', '.join(valid_types)}")
 
-    deposit = conn.execute("SELECT * FROM propertyclaw_security_deposit WHERE id = ?",
-                           (args.security_deposit_id,)).fetchone()
+    deposit = conn.execute(Q.from_(Table("propertyclaw_security_deposit")).select(Table("propertyclaw_security_deposit").star).where(Field("id") == P()).get_sql(), (args.security_deposit_id,)).fetchone()
     if not deposit:
         err(f"Security deposit {args.security_deposit_id} not found")
 

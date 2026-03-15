@@ -18,6 +18,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
 
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
     # Register naming prefixes
     ENTITY_PREFIXES.setdefault("commercial_cam_pool", "CCAM-")
 except ImportError:
@@ -31,14 +32,18 @@ VALID_POOL_STATUSES = ("open", "reconciling", "closed")
 def _validate_company(conn, company_id):
     if not company_id:
         err("--company-id is required")
-    if not conn.execute("SELECT id FROM company WHERE id = ?", (company_id,)).fetchone():
+    t_co = Table("company")
+    q_co = Q.from_(t_co).select(t_co.id).where(t_co.id == P())
+    if not conn.execute(q_co.get_sql(), (company_id,)).fetchone():
         err(f"Company {company_id} not found")
 
 
 def _validate_pool(conn, pool_id):
     if not pool_id:
         err("--pool-id is required")
-    row = conn.execute("SELECT * FROM commercial_cam_pool WHERE id = ?", (pool_id,)).fetchone()
+    t = Table("commercial_cam_pool")
+    q = Q.from_(t).select(t.star).where(t.id == P())
+    row = conn.execute(q.get_sql(), (pool_id,)).fetchone()
     if not row:
         err(f"CAM Pool {pool_id} not found")
     return row
@@ -274,7 +279,9 @@ def add_cam_allocation(conn, args):
     lease_id = getattr(args, "lease_id", None)
     if not lease_id:
         err("--lease-id is required")
-    lease = conn.execute("SELECT * FROM commercial_nnn_lease WHERE id = ?", (lease_id,)).fetchone()
+    t_lease = Table("commercial_nnn_lease")
+    q_lease = Q.from_(t_lease).select(t_lease.star).where(t_lease.id == P())
+    lease = conn.execute(q_lease.get_sql(), (lease_id,)).fetchone()
     if not lease:
         err(f"NNN Lease {lease_id} not found")
 

@@ -21,6 +21,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
     from erpclaw_lib.dependencies import check_required_tables
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
 except ImportError:
     import json as _json
     print(_json.dumps({
@@ -56,13 +57,13 @@ def add_lease(conn, args):
     if not args.monthly_rent:
         err("--monthly-rent is required")
 
-    if not conn.execute("SELECT id FROM company WHERE id = ?", (args.company_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("company")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.company_id,)).fetchone():
         err(f"Company {args.company_id} not found")
-    if not conn.execute("SELECT id FROM propertyclaw_property WHERE id = ?", (args.property_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_property")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.property_id,)).fetchone():
         err(f"Property {args.property_id} not found")
-    if not conn.execute("SELECT id FROM propertyclaw_unit WHERE id = ?", (args.unit_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_unit")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.unit_id,)).fetchone():
         err(f"Unit {args.unit_id} not found")
-    if not conn.execute("SELECT id FROM customer WHERE id = ?", (args.customer_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("customer")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.customer_id,)).fetchone():
         err(f"Customer (tenant) {args.customer_id} not found")
 
     lease_type = args.lease_type or "fixed"
@@ -102,7 +103,7 @@ def add_lease(conn, args):
 def update_lease(conn, args):
     if not args.lease_id:
         err("--lease-id is required")
-    if not conn.execute("SELECT id FROM propertyclaw_lease WHERE id = ?", (args.lease_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_lease")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.lease_id,)).fetchone():
         err(f"Lease {args.lease_id} not found")
 
     updates, params, changed = [], [], []
@@ -202,7 +203,7 @@ def activate_lease(conn, args):
     if not args.lease_id:
         err("--lease-id is required")
 
-    lease = conn.execute("SELECT * FROM propertyclaw_lease WHERE id = ?", (args.lease_id,)).fetchone()
+    lease = conn.execute(Q.from_(Table("propertyclaw_lease")).select(Table("propertyclaw_lease").star).where(Field("id") == P()).get_sql(), (args.lease_id,)).fetchone()
     if not lease:
         err(f"Lease {args.lease_id} not found")
     if lease["status"] != "draft":
@@ -242,7 +243,7 @@ def terminate_lease(conn, args):
     if not args.move_out_date:
         err("--move-out-date is required")
 
-    lease = conn.execute("SELECT * FROM propertyclaw_lease WHERE id = ?", (args.lease_id,)).fetchone()
+    lease = conn.execute(Q.from_(Table("propertyclaw_lease")).select(Table("propertyclaw_lease").star).where(Field("id") == P()).get_sql(), (args.lease_id,)).fetchone()
     if not lease:
         err(f"Lease {args.lease_id} not found")
     if lease["status"] not in ("active", "expired"):
@@ -273,8 +274,7 @@ def add_rent_schedule(conn, args):
     if args.charge_type not in VALID_CHARGE_TYPES:
         err(f"--charge-type must be one of: {', '.join(VALID_CHARGE_TYPES)}")
 
-    lease = conn.execute("SELECT id, start_date, end_date FROM propertyclaw_lease WHERE id = ?",
-                         (args.lease_id,)).fetchone()
+    lease = conn.execute(Q.from_(Table("propertyclaw_lease")).select(Field("id"), Field("start_date"), Field("end_date")).where(Field("id") == P()).get_sql(), (args.lease_id,)).fetchone()
     if not lease:
         err(f"Lease {args.lease_id} not found")
 
@@ -319,8 +319,7 @@ def list_rent_schedules(conn, args):
 def delete_rent_schedule(conn, args):
     if not args.rent_schedule_id:
         err("--rent-schedule-id is required")
-    if not conn.execute("SELECT id FROM propertyclaw_rent_schedule WHERE id = ?",
-                        (args.rent_schedule_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("propertyclaw_rent_schedule")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.rent_schedule_id,)).fetchone():
         err(f"Rent schedule {args.rent_schedule_id} not found")
     conn.execute("DELETE FROM propertyclaw_rent_schedule WHERE id = ?", (args.rent_schedule_id,))
     conn.commit()
@@ -336,7 +335,7 @@ def generate_charges(conn, args):
     if not args.charge_date:
         err("--charge-date is required")
 
-    lease = conn.execute("SELECT * FROM propertyclaw_lease WHERE id = ?", (args.lease_id,)).fetchone()
+    lease = conn.execute(Q.from_(Table("propertyclaw_lease")).select(Table("propertyclaw_lease").star).where(Field("id") == P()).get_sql(), (args.lease_id,)).fetchone()
     if not lease:
         err(f"Lease {args.lease_id} not found")
     if lease["status"] != "active":
@@ -398,7 +397,7 @@ def add_late_fee_rule(conn, args):
         err("--fee-type is required")
     if args.fee_type not in VALID_FEE_TYPES:
         err(f"--fee-type must be one of: {', '.join(VALID_FEE_TYPES)}")
-    if not conn.execute("SELECT id FROM company WHERE id = ?", (args.company_id,)).fetchone():
+    if not conn.execute(Q.from_(Table("company")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.company_id,)).fetchone():
         err(f"Company {args.company_id} not found")
 
     rule_id = str(uuid.uuid4())
@@ -456,9 +455,7 @@ def apply_late_fees(conn, args):
 
     applied = []
     for lease in leases:
-        rule = conn.execute(
-            "SELECT * FROM propertyclaw_late_fee_rule WHERE company_id = ? AND state = ?",
-            (args.company_id, lease["state"])).fetchone()
+        rule = conn.execute(Q.from_(Table("propertyclaw_late_fee_rule")).select(Table("propertyclaw_late_fee_rule").star).where(Field("company_id") == P()).where(Field("state") == P()).get_sql(), (args.company_id, lease["state"])).fetchone()
         if not rule:
             continue
 
@@ -516,7 +513,7 @@ def propose_renewal(conn, args):
     if not args.new_monthly_rent:
         err("--new-monthly-rent is required")
 
-    lease = conn.execute("SELECT * FROM propertyclaw_lease WHERE id = ?", (args.lease_id,)).fetchone()
+    lease = conn.execute(Q.from_(Table("propertyclaw_lease")).select(Table("propertyclaw_lease").star).where(Field("id") == P()).get_sql(), (args.lease_id,)).fetchone()
     if not lease:
         err(f"Lease {args.lease_id} not found")
 
@@ -547,15 +544,13 @@ def accept_renewal(conn, args):
     if not args.renewal_id:
         err("--renewal-id is required")
 
-    renewal = conn.execute("SELECT * FROM propertyclaw_lease_renewal WHERE id = ?",
-                           (args.renewal_id,)).fetchone()
+    renewal = conn.execute(Q.from_(Table("propertyclaw_lease_renewal")).select(Table("propertyclaw_lease_renewal").star).where(Field("id") == P()).get_sql(), (args.renewal_id,)).fetchone()
     if not renewal:
         err(f"Renewal {args.renewal_id} not found")
     if renewal["status"] != "proposed":
         err(f"Renewal must be 'proposed' to accept (current: {renewal['status']})")
 
-    old_lease = conn.execute("SELECT * FROM propertyclaw_lease WHERE id = ?",
-                             (renewal["lease_id"],)).fetchone()
+    old_lease = conn.execute(Q.from_(Table("propertyclaw_lease")).select(Table("propertyclaw_lease").star).where(Field("id") == P()).get_sql(), (renewal["lease_id"],)).fetchone()
     if not old_lease:
         err("Original lease not found")
 
