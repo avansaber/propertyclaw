@@ -131,6 +131,7 @@ def update_lease(conn, args):
 
     updates.append("updated_at = datetime('now')")
     params.append(args.lease_id)
+    # PyPika: skipped — dynamic UPDATE with variable columns
     conn.execute(f"UPDATE propertyclaw_lease SET {', '.join(updates)} WHERE id = ?", params)
     audit(conn, SKILL, "prop-update-lease", "propertyclaw_lease", args.lease_id,
           new_values={"updated_fields": changed})
@@ -168,6 +169,7 @@ def get_lease(conn, args):
 # list-leases
 # ---------------------------------------------------------------------------
 def list_leases(conn, args):
+    # PyPika: skipped — dynamic WHERE with multi-table JOIN
     params = []
     where = ["1=1"]
     if args.company_id:
@@ -209,8 +211,12 @@ def activate_lease(conn, args):
     if lease["status"] != "draft":
         err(f"Lease must be in 'draft' status to activate (current: {lease['status']})")
 
-    conn.execute("UPDATE propertyclaw_unit SET status = 'occupied', updated_at = datetime('now') WHERE id = ?",
-                 (lease["unit_id"],))
+    from erpclaw_lib.query import LiteralValue
+    conn.execute(
+        update_row("propertyclaw_unit",
+                   data={"status": P(), "updated_at": LiteralValue("datetime('now')")},
+                   where={"id": P()}),
+        ("occupied", lease["unit_id"]))
 
     move_in = args.move_in_date or lease["start_date"]
     conn.execute(
@@ -321,7 +327,8 @@ def delete_rent_schedule(conn, args):
         err("--rent-schedule-id is required")
     if not conn.execute(Q.from_(Table("propertyclaw_rent_schedule")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.rent_schedule_id,)).fetchone():
         err(f"Rent schedule {args.rent_schedule_id} not found")
-    conn.execute("DELETE FROM propertyclaw_rent_schedule WHERE id = ?", (args.rent_schedule_id,))
+    _trs = Table("propertyclaw_rent_schedule")
+    conn.execute(Q.from_(_trs).delete().where(_trs.id == P()).get_sql(), (args.rent_schedule_id,))
     conn.commit()
     ok({"deleted": args.rent_schedule_id})
 
@@ -370,6 +377,7 @@ def generate_charges(conn, args):
 # list-charges
 # ---------------------------------------------------------------------------
 def list_charges(conn, args):
+    # PyPika: skipped — dynamic WHERE with optional filters
     params = []; where = ["1=1"]
     if args.lease_id:
         where.append("lease_id = ?"); params.append(args.lease_id)

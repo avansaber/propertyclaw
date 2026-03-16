@@ -80,18 +80,18 @@ def add_nnn_lease(conn, args):
     conn.company_id = args.company_id
     lease_name = get_next_name(conn, "commercial_nnn_lease")
 
-    conn.execute(
-        """INSERT INTO commercial_nnn_lease
-           (id, naming_series, tenant_name, property_name, suite_number,
-            lease_start, lease_end, base_rent, cam_share_pct, insurance_share_pct,
-            tax_share_pct, escalation_pct, escalation_frequency, square_footage,
-            lease_status, company_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (lease_id, lease_name, args.tenant_name, args.property_name,
-         getattr(args, "suite_number", None),
-         args.lease_start, args.lease_end, base_rent, cam_pct, ins_pct,
-         tax_pct, esc_pct, esc_freq, sq_ft,
-         "draft", args.company_id))
+    sql, _ = insert_row("commercial_nnn_lease", {
+        "id": P(), "naming_series": P(), "tenant_name": P(), "property_name": P(),
+        "suite_number": P(), "lease_start": P(), "lease_end": P(), "base_rent": P(),
+        "cam_share_pct": P(), "insurance_share_pct": P(), "tax_share_pct": P(),
+        "escalation_pct": P(), "escalation_frequency": P(), "square_footage": P(),
+        "lease_status": P(), "company_id": P(),
+    })
+    conn.execute(sql, (lease_id, lease_name, args.tenant_name, args.property_name,
+                       getattr(args, "suite_number", None),
+                       args.lease_start, args.lease_end, base_rent, cam_pct, ins_pct,
+                       tax_pct, esc_pct, esc_freq, sq_ft,
+                       "draft", args.company_id))
 
     audit(conn, SKILL, "commercial-add-nnn-lease", "commercial_nnn_lease", lease_id,
           new_values={"tenant": args.tenant_name, "naming_series": lease_name})
@@ -174,9 +174,11 @@ def get_nnn_lease(conn, args):
     data = row_to_dict(row)
 
     # Include passthroughs
-    passthroughs = conn.execute(
-        "SELECT * FROM commercial_expense_passthrough WHERE lease_id = ? ORDER BY expense_period DESC",
-        (args.lease_id,)).fetchall()
+    t_pt = Table("commercial_expense_passthrough")
+    q_pt = (Q.from_(t_pt).select(t_pt.star)
+            .where(t_pt.lease_id == P())
+            .orderby(t_pt.expense_period, order=Order.desc))
+    passthroughs = conn.execute(q_pt.get_sql(), (args.lease_id,)).fetchall()
     data["passthroughs"] = [row_to_dict(p) for p in passthroughs]
 
     ok(data)
@@ -189,21 +191,23 @@ def list_nnn_leases(conn, args):
     if not args.company_id:
         err("--company-id is required")
 
+    t = Table("commercial_nnn_lease")
+    q_count = Q.from_(t).select(fn.Count("*")).where(t.company_id == P())
+    q_rows = Q.from_(t).select(t.star).where(t.company_id == P())
     params = [args.company_id]
-    where = ["company_id = ?"]
 
     lease_status = getattr(args, "lease_status", None)
     if lease_status:
-        where.append("lease_status = ?"); params.append(lease_status)
+        q_count = q_count.where(t.lease_status == P())
+        q_rows = q_rows.where(t.lease_status == P())
+        params.append(lease_status)
 
-    wc = " AND ".join(where)
-    total = conn.execute(f"SELECT COUNT(*) FROM commercial_nnn_lease WHERE {wc}", params).fetchone()[0]
+    total = conn.execute(q_count.get_sql(), params).fetchone()[0]
 
     limit = int(args.limit); offset = int(args.offset)
-    rows = conn.execute(
-        f"""SELECT * FROM commercial_nnn_lease
-            WHERE {wc} ORDER BY created_at DESC LIMIT ? OFFSET ?""",
-        params + [limit, offset]).fetchall()
+    page_params = list(params) + [limit, offset]
+    q_rows = q_rows.orderby(t.created_at, order=Order.desc).limit(P()).offset(P())
+    rows = conn.execute(q_rows.get_sql(), page_params).fetchall()
 
     ok({"leases": [row_to_dict(r) for r in rows], "total_count": total,
         "limit": limit, "offset": offset, "has_more": offset + limit < total})
@@ -234,13 +238,13 @@ def add_expense_passthrough(conn, args):
     tenant_share = str(round_currency(actual_dec * share_pct / Decimal("100")))
 
     pt_id = str(uuid.uuid4())
-    conn.execute(
-        """INSERT INTO commercial_expense_passthrough
-           (id, lease_id, expense_type, expense_period, actual_amount,
-            tenant_share, estimated_amount, reconciled, company_id)
-           VALUES (?,?,?,?,?,?,?,0,?)""",
-        (pt_id, args.lease_id, expense_type, expense_period,
-         actual_amount, tenant_share, estimated_amount, lease["company_id"]))
+    sql, _ = insert_row("commercial_expense_passthrough", {
+        "id": P(), "lease_id": P(), "expense_type": P(), "expense_period": P(),
+        "actual_amount": P(), "tenant_share": P(), "estimated_amount": P(),
+        "reconciled": P(), "company_id": P(),
+    })
+    conn.execute(sql, (pt_id, args.lease_id, expense_type, expense_period,
+                       actual_amount, tenant_share, estimated_amount, 0, lease["company_id"]))
 
     conn.commit()
     ok({"passthrough_id": pt_id, "expense_type": expense_type,
@@ -253,16 +257,16 @@ def add_expense_passthrough(conn, args):
 def list_expense_passthroughs(conn, args):
     _validate_lease(conn, args.lease_id)
 
+    t = Table("commercial_expense_passthrough")
+    q = Q.from_(t).select(t.star).where(t.lease_id == P())
     params = [args.lease_id]
-    where = ["lease_id = ?"]
     expense_type = getattr(args, "expense_type", None)
     if expense_type:
-        where.append("expense_type = ?"); params.append(expense_type)
+        q = q.where(t.expense_type == P())
+        params.append(expense_type)
 
-    wc = " AND ".join(where)
-    rows = conn.execute(
-        f"SELECT * FROM commercial_expense_passthrough WHERE {wc} ORDER BY expense_period DESC",
-        params).fetchall()
+    q = q.orderby(t.expense_period, order=Order.desc)
+    rows = conn.execute(q.get_sql(), params).fetchall()
 
     ok({"passthroughs": [row_to_dict(r) for r in rows], "count": len(rows)})
 
@@ -282,12 +286,12 @@ def calculate_monthly_charges(conn, args):
     charges = {"base_rent": str(round_currency(base_rent))}
     total = base_rent
 
+    t_pt = Table("commercial_expense_passthrough")
     for etype, pct in [("cam", cam_pct), ("insurance", ins_pct), ("tax", tax_pct)]:
-        latest = conn.execute(
-            """SELECT estimated_amount FROM commercial_expense_passthrough
-               WHERE lease_id = ? AND expense_type = ?
-               ORDER BY expense_period DESC LIMIT 1""",
-            (args.lease_id, etype)).fetchone()
+        q_latest = (Q.from_(t_pt).select(t_pt.estimated_amount)
+                    .where(t_pt.lease_id == P()).where(t_pt.expense_type == P())
+                    .orderby(t_pt.expense_period, order=Order.desc).limit(1))
+        latest = conn.execute(q_latest.get_sql(), (args.lease_id, etype)).fetchone()
         if latest:
             est = to_decimal(latest["estimated_amount"])
             share = round_currency(est * pct / Decimal("100"))
@@ -317,14 +321,15 @@ def generate_nnn_invoice(conn, args):
     line_items = [{"description": "Base Rent", "amount": str(round_currency(base_rent))}]
     total = base_rent
 
+    t_pt = Table("commercial_expense_passthrough")
     for etype, pct, label in [("cam", cam_pct, "CAM Share"),
                                 ("insurance", ins_pct, "Insurance Share"),
                                 ("tax", tax_pct, "Tax Share")]:
-        pt = conn.execute(
-            """SELECT actual_amount FROM commercial_expense_passthrough
-               WHERE lease_id = ? AND expense_type = ? AND expense_period = ?
-               ORDER BY created_at DESC LIMIT 1""",
-            (args.lease_id, etype, invoice_period)).fetchone()
+        q_pt = (Q.from_(t_pt).select(t_pt.actual_amount)
+                .where(t_pt.lease_id == P()).where(t_pt.expense_type == P())
+                .where(t_pt.expense_period == P())
+                .orderby(t_pt.created_at, order=Order.desc).limit(1))
+        pt = conn.execute(q_pt.get_sql(), (args.lease_id, etype, invoice_period)).fetchone()
         if pt:
             actual = to_decimal(pt["actual_amount"])
             share = round_currency(actual * pct / Decimal("100"))
@@ -349,25 +354,26 @@ def nnn_lease_summary(conn, args):
     if not args.company_id:
         err("--company-id is required")
 
-    total_leases = conn.execute(
-        "SELECT COUNT(*) FROM commercial_nnn_lease WHERE company_id = ?",
-        (args.company_id,)).fetchone()[0]
-    active = conn.execute(
-        "SELECT COUNT(*) FROM commercial_nnn_lease WHERE company_id = ? AND lease_status = 'active'",
-        (args.company_id,)).fetchone()[0]
-    draft = conn.execute(
-        "SELECT COUNT(*) FROM commercial_nnn_lease WHERE company_id = ? AND lease_status = 'draft'",
-        (args.company_id,)).fetchone()[0]
-    expired = conn.execute(
-        "SELECT COUNT(*) FROM commercial_nnn_lease WHERE company_id = ? AND lease_status = 'expired'",
-        (args.company_id,)).fetchone()[0]
+    from erpclaw_lib.vendor.pypika.terms import LiteralValue
+
+    t = Table("commercial_nnn_lease")
+    q_total = Q.from_(t).select(fn.Count("*")).where(t.company_id == P())
+    total_leases = conn.execute(q_total.get_sql(), (args.company_id,)).fetchone()[0]
+
+    q_active = Q.from_(t).select(fn.Count("*")).where(t.company_id == P()).where(t.lease_status == "active")
+    active = conn.execute(q_active.get_sql(), (args.company_id,)).fetchone()[0]
+
+    q_draft = Q.from_(t).select(fn.Count("*")).where(t.company_id == P()).where(t.lease_status == "draft")
+    draft = conn.execute(q_draft.get_sql(), (args.company_id,)).fetchone()[0]
+
+    q_expired = Q.from_(t).select(fn.Count("*")).where(t.company_id == P()).where(t.lease_status == "expired")
+    expired = conn.execute(q_expired.get_sql(), (args.company_id,)).fetchone()[0]
 
     # Total base rent (active leases)
-    rent_row = conn.execute(
-        """SELECT COALESCE(SUM(CAST(base_rent AS REAL)), 0) as total_rent
-           FROM commercial_nnn_lease
-           WHERE company_id = ? AND lease_status = 'active'""",
-        (args.company_id,)).fetchone()
+    q_rent = (Q.from_(t)
+              .select(LiteralValue('COALESCE(SUM(CAST("base_rent" AS REAL)), 0)').as_("total_rent"))
+              .where(t.company_id == P()).where(t.lease_status == "active"))
+    rent_row = conn.execute(q_rent.get_sql(), (args.company_id,)).fetchone()
     total_base_rent = str(round_currency(to_decimal(str(rent_row["total_rent"]))))
 
     ok({
@@ -386,13 +392,15 @@ def lease_expiry_schedule(conn, args):
     if not args.company_id:
         err("--company-id is required")
 
-    rows = conn.execute(
-        """SELECT id, naming_series, tenant_name, property_name, suite_number,
-                  lease_start, lease_end, base_rent, lease_status
-           FROM commercial_nnn_lease
-           WHERE company_id = ? AND lease_status IN ('active', 'draft')
-           ORDER BY lease_end ASC""",
-        (args.company_id,)).fetchall()
+    from erpclaw_lib.vendor.pypika.terms import LiteralValue
+    t = Table("commercial_nnn_lease")
+    q = (Q.from_(t)
+         .select(t.id, t.naming_series, t.tenant_name, t.property_name, t.suite_number,
+                 t.lease_start, t.lease_end, t.base_rent, t.lease_status)
+         .where(t.company_id == P())
+         .where(t.lease_status.isin(["active", "draft"]))
+         .orderby(t.lease_end))
+    rows = conn.execute(q.get_sql(), (args.company_id,)).fetchall()
 
     ok({"leases": [row_to_dict(r) for r in rows], "count": len(rows)})
 

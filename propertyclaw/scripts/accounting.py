@@ -110,6 +110,7 @@ def get_trust_account(conn, args):
 # list-trust-accounts
 # ---------------------------------------------------------------------------
 def list_trust_accounts(conn, args):
+    # PyPika: skipped — dynamic WHERE with multi-table JOIN
     params = []; where = ["1=1"]
     if args.company_id:
         where.append("t.company_id = ?"); params.append(args.company_id)
@@ -208,6 +209,7 @@ def generate_owner_statement(conn, args):
 # list-owner-statements
 # ---------------------------------------------------------------------------
 def list_owner_statements(conn, args):
+    # PyPika: skipped — dynamic WHERE with multi-table JOIN
     params = []; where = ["1=1"]
     if args.company_id:
         where.append("s.company_id = ?"); params.append(args.company_id)
@@ -310,10 +312,12 @@ def return_security_deposit(conn, args):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     new_status = "returned" if return_amount + deduction_total >= deposit_amount else "partially_returned"
 
+    from erpclaw_lib.query import LiteralValue
     conn.execute(
-        """UPDATE propertyclaw_security_deposit
-           SET return_amount = ?, return_date = ?, status = ?, updated_at = datetime('now')
-           WHERE id = ?""",
+        update_row("propertyclaw_security_deposit",
+                   data={"return_amount": P(), "return_date": P(), "status": P(),
+                         "updated_at": LiteralValue("datetime('now')")},
+                   where={"id": P()}),
         (str(return_amount), today, new_status, args.security_deposit_id))
 
     audit(conn, SKILL, "prop-return-security-deposit", "propertyclaw_security_deposit",
@@ -364,8 +368,11 @@ def add_deposit_deduction(conn, args):
 
     # Update total deductions on deposit
     new_total = str(round_currency(current_deductions + amount))
+    from erpclaw_lib.query import LiteralValue
     conn.execute(
-        "UPDATE propertyclaw_security_deposit SET deduction_amount = ?, updated_at = datetime('now') WHERE id = ?",
+        update_row("propertyclaw_security_deposit",
+                   data={"deduction_amount": P(), "updated_at": LiteralValue("datetime('now')")},
+                   where={"id": P()}),
         (new_total, args.security_deposit_id))
 
     conn.commit()
@@ -377,13 +384,15 @@ def add_deposit_deduction(conn, args):
 # list-deposit-deductions
 # ---------------------------------------------------------------------------
 def list_deposit_deductions(conn, args):
+    _tdd = Table("propertyclaw_deposit_deduction")
     if args.security_deposit_id:
         rows = conn.execute(
-            "SELECT * FROM propertyclaw_deposit_deduction WHERE security_deposit_id = ? ORDER BY created_at",
+            Q.from_(_tdd).select(_tdd.star).where(_tdd.security_deposit_id == P())
+            .orderby(_tdd.created_at).get_sql(),
             (args.security_deposit_id,)).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM propertyclaw_deposit_deduction ORDER BY created_at DESC").fetchall()
+            Q.from_(_tdd).select(_tdd.star).orderby(_tdd.created_at, order=Order.desc).get_sql()).fetchall()
 
     total = sum(to_decimal(r["amount"]) for r in rows)
     ok({"deductions": [row_to_dict(r) for r in rows], "count": len(rows),
@@ -401,6 +410,7 @@ def generate_1099_report(conn, args):
 
     tax_year = int(args.tax_year)
 
+    # PyPika: skipped — complex aggregate JOIN with HAVING and dynamic WHERE
     # Calculate vendor payments from completed work orders
     query = """
         SELECT s.id as supplier_id, s.name as vendor_name, s.tax_id,

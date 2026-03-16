@@ -61,25 +61,28 @@ def _validate_allowance(conn, allowance_id):
 
 def _recalc_allowance(conn, allowance_id):
     """Recalculate disbursed and remaining amounts for a TI allowance."""
+    from erpclaw_lib.vendor.pypika.terms import LiteralValue
+
     t_allow = Table("commercial_ti_allowance")
     q_allow = Q.from_(t_allow).select(t_allow.total_allowance).where(t_allow.id == P())
     allowance = conn.execute(q_allow.get_sql(), (allowance_id,)).fetchone()
     total = to_decimal(allowance["total_allowance"])
 
     # Sum approved or paid draws only
-    row = conn.execute(
-        """SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) as total_drawn
-           FROM commercial_ti_draw
-           WHERE allowance_id = ? AND draw_status IN ('approved', 'paid')""",
-        (allowance_id,)).fetchone()
+    t_draw = Table("commercial_ti_draw")
+    q_drawn = (Q.from_(t_draw)
+               .select(LiteralValue('COALESCE(SUM(CAST("amount" AS REAL)), 0)').as_("total_drawn"))
+               .where(t_draw.allowance_id == P())
+               .where(t_draw.draw_status.isin(["approved", "paid"])))
+    row = conn.execute(q_drawn.get_sql(), (allowance_id,)).fetchone()
     disbursed = round_currency(to_decimal(str(row["total_drawn"])))
     remaining = round_currency(total - disbursed)
 
-    conn.execute(
-        """UPDATE commercial_ti_allowance
-           SET disbursed_amount = ?, remaining_amount = ?, updated_at = datetime('now')
-           WHERE id = ?""",
-        (str(disbursed), str(remaining), allowance_id))
+    sql = update_row("commercial_ti_allowance",
+                     data={"disbursed_amount": P(), "remaining_amount": P(),
+                           "updated_at": LiteralValue("datetime('now')")},
+                     where={"id": P()})
+    conn.execute(sql, (str(disbursed), str(remaining), allowance_id))
 
     return disbursed, remaining
 
@@ -102,14 +105,14 @@ def add_ti_allowance(conn, args):
     conn.company_id = lease["company_id"]
     ti_name = get_next_name(conn, "commercial_ti_allowance")
 
-    conn.execute(
-        """INSERT INTO commercial_ti_allowance
-           (id, naming_series, lease_id, total_allowance, disbursed_amount,
-            remaining_amount, contractor, scope_of_work, ti_status, company_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        (allowance_id, ti_name, args.lease_id, str(total_dec), "0",
-         str(total_dec), getattr(args, "contractor", None),
-         getattr(args, "scope_of_work", None), "approved", lease["company_id"]))
+    sql, _ = insert_row("commercial_ti_allowance", {
+        "id": P(), "naming_series": P(), "lease_id": P(), "total_allowance": P(),
+        "disbursed_amount": P(), "remaining_amount": P(), "contractor": P(),
+        "scope_of_work": P(), "ti_status": P(), "company_id": P(),
+    })
+    conn.execute(sql, (allowance_id, ti_name, args.lease_id, str(total_dec), "0",
+                       str(total_dec), getattr(args, "contractor", None),
+                       getattr(args, "scope_of_work", None), "approved", lease["company_id"]))
 
     audit(conn, SKILL, "commercial-add-ti-allowance", "commercial_ti_allowance", allowance_id,
           new_values={"naming_series": ti_name, "total_allowance": str(total_dec)})
@@ -127,18 +130,22 @@ def get_ti_allowance(conn, args):
     data = row_to_dict(allowance)
 
     # Include lease info
-    lease = conn.execute(
-        "SELECT tenant_name, property_name, suite_number FROM commercial_nnn_lease WHERE id = ?",
-        (allowance["lease_id"],)).fetchone()
+    t_l = Table("commercial_nnn_lease")
+    q_lease = (Q.from_(t_l)
+               .select(t_l.tenant_name, t_l.property_name, t_l.suite_number)
+               .where(t_l.id == P()))
+    lease = conn.execute(q_lease.get_sql(), (allowance["lease_id"],)).fetchone()
     if lease:
         data["tenant_name"] = lease["tenant_name"]
         data["property_name"] = lease["property_name"]
         data["suite_number"] = lease["suite_number"]
 
     # Include draws
-    draws = conn.execute(
-        "SELECT * FROM commercial_ti_draw WHERE allowance_id = ? ORDER BY draw_date DESC",
-        (allowance_id,)).fetchall()
+    t_d = Table("commercial_ti_draw")
+    q_draws = (Q.from_(t_d).select(t_d.star)
+               .where(t_d.allowance_id == P())
+               .orderby(t_d.draw_date, order=Order.desc))
+    draws = conn.execute(q_draws.get_sql(), (allowance_id,)).fetchall()
     data["draws"] = [row_to_dict(d) for d in draws]
     data["draw_count"] = len(draws)
 
@@ -190,26 +197,32 @@ def list_ti_allowances(conn, args):
     if not args.company_id:
         err("--company-id is required")
 
+    t_a = Table("commercial_ti_allowance")
+    t_l = Table("commercial_nnn_lease")
+
+    q_count = Q.from_(t_a).select(fn.Count("*")).where(t_a.company_id == P())
+    q_rows = (Q.from_(t_a)
+              .join(t_l).on(t_a.lease_id == t_l.id)
+              .select(t_a.star, t_l.tenant_name, t_l.property_name)
+              .where(t_a.company_id == P()))
     params = [args.company_id]
-    where = ["a.company_id = ?"]
 
     if args.lease_id:
-        where.append("a.lease_id = ?"); params.append(args.lease_id)
+        q_count = q_count.where(t_a.lease_id == P())
+        q_rows = q_rows.where(t_a.lease_id == P())
+        params.append(args.lease_id)
     ti_status = getattr(args, "ti_status", None)
     if ti_status:
-        where.append("a.ti_status = ?"); params.append(ti_status)
+        q_count = q_count.where(t_a.ti_status == P())
+        q_rows = q_rows.where(t_a.ti_status == P())
+        params.append(ti_status)
 
-    wc = " AND ".join(where)
-    total = conn.execute(
-        f"SELECT COUNT(*) FROM commercial_ti_allowance a WHERE {wc}", params).fetchone()[0]
+    total = conn.execute(q_count.get_sql(), params).fetchone()[0]
 
     limit = int(args.limit); offset = int(args.offset)
-    rows = conn.execute(
-        f"""SELECT a.*, l.tenant_name, l.property_name
-            FROM commercial_ti_allowance a
-            JOIN commercial_nnn_lease l ON a.lease_id = l.id
-            WHERE {wc} ORDER BY a.created_at DESC LIMIT ? OFFSET ?""",
-        params + [limit, offset]).fetchall()
+    page_params = list(params) + [limit, offset]
+    q_rows = q_rows.orderby(t_a.created_at, order=Order.desc).limit(P()).offset(P())
+    rows = conn.execute(q_rows.get_sql(), page_params).fetchall()
 
     ok({"allowances": [row_to_dict(r) for r in rows], "total_count": total,
         "limit": limit, "offset": offset, "has_more": offset + limit < total})
@@ -241,15 +254,15 @@ def add_ti_draw(conn, args):
         err(f"Draw amount ({amount_dec}) exceeds remaining allowance ({remaining})")
 
     draw_id = str(uuid.uuid4())
-    conn.execute(
-        """INSERT INTO commercial_ti_draw
-           (id, allowance_id, draw_date, amount, description,
-            invoice_reference, draw_status, company_id)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        (draw_id, allowance_id, draw_date, str(amount_dec),
-         getattr(args, "description", None),
-         getattr(args, "invoice_reference", None),
-         "pending", allowance["company_id"]))
+    sql, _ = insert_row("commercial_ti_draw", {
+        "id": P(), "allowance_id": P(), "draw_date": P(), "amount": P(),
+        "description": P(), "invoice_reference": P(), "draw_status": P(),
+        "company_id": P(),
+    })
+    conn.execute(sql, (draw_id, allowance_id, draw_date, str(amount_dec),
+                       getattr(args, "description", None),
+                       getattr(args, "invoice_reference", None),
+                       "pending", allowance["company_id"]))
 
     conn.commit()
     ok({"draw_id": draw_id, "amount": str(amount_dec), "draw_status": "pending"})
@@ -262,16 +275,16 @@ def list_ti_draws(conn, args):
     allowance_id = getattr(args, "allowance_id", None)
     _validate_allowance(conn, allowance_id)
 
-    draw_status = getattr(args, "draw_status", None)
+    t = Table("commercial_ti_draw")
+    q = Q.from_(t).select(t.star).where(t.allowance_id == P())
     params = [allowance_id]
-    where = ["allowance_id = ?"]
+    draw_status = getattr(args, "draw_status", None)
     if draw_status:
-        where.append("draw_status = ?"); params.append(draw_status)
+        q = q.where(t.draw_status == P())
+        params.append(draw_status)
 
-    wc = " AND ".join(where)
-    rows = conn.execute(
-        f"SELECT * FROM commercial_ti_draw WHERE {wc} ORDER BY draw_date DESC",
-        params).fetchall()
+    q = q.orderby(t.draw_date, order=Order.desc)
+    rows = conn.execute(q.get_sql(), params).fetchall()
 
     total_drawn = sum(to_decimal(r["amount"]) for r in rows)
     ok({"draws": [row_to_dict(r) for r in rows], "count": len(rows),
@@ -285,13 +298,14 @@ def ti_summary_report(conn, args):
     if not args.company_id:
         err("--company-id is required")
 
-    rows = conn.execute(
-        """SELECT a.*, l.tenant_name, l.property_name
-           FROM commercial_ti_allowance a
-           JOIN commercial_nnn_lease l ON a.lease_id = l.id
-           WHERE a.company_id = ?
-           ORDER BY a.created_at DESC""",
-        (args.company_id,)).fetchall()
+    t_a = Table("commercial_ti_allowance")
+    t_l = Table("commercial_nnn_lease")
+    q = (Q.from_(t_a)
+         .join(t_l).on(t_a.lease_id == t_l.id)
+         .select(t_a.star, t_l.tenant_name, t_l.property_name)
+         .where(t_a.company_id == P())
+         .orderby(t_a.created_at, order=Order.desc))
+    rows = conn.execute(q.get_sql(), (args.company_id,)).fetchall()
 
     total_allowance = Decimal("0")
     total_disbursed = Decimal("0")

@@ -22,7 +22,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
     from erpclaw_lib.dependencies import check_required_tables
-    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, Criterion
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, Criterion, insert_row, update_row
 except ImportError:
     import json as _json
     print(_json.dumps({
@@ -160,6 +160,7 @@ def update_property(conn, args):
 
     updates.append("updated_at = datetime('now')")
     params.append(args.property_id)
+    # PyPika: skipped — dynamic UPDATE with variable columns
     conn.execute(f"UPDATE propertyclaw_property SET {', '.join(updates)} WHERE id = ?", params)
 
     audit(conn, SKILL, "prop-update-property", "propertyclaw_property", args.property_id,
@@ -182,6 +183,7 @@ def get_property(conn, args):
     data = row_to_dict(row)
 
     # Add unit count and occupancy
+    # PyPika: skipped — aggregate CASE expression
     unit_stats = conn.execute(
         """SELECT COUNT(*) as total, SUM(CASE WHEN status='occupied' THEN 1 ELSE 0 END) as occupied
            FROM propertyclaw_unit WHERE property_id = ?""",
@@ -196,6 +198,7 @@ def get_property(conn, args):
 # list-properties
 # ---------------------------------------------------------------------------
 def list_properties(conn, args):
+    # PyPika: skipped — dynamic WHERE with LIKE search and subquery
     params = []
     where = ["1=1"]
 
@@ -316,6 +319,7 @@ def update_unit(conn, args):
 
     updates.append("updated_at = datetime('now')")
     params.append(args.unit_id)
+    # PyPika: skipped — dynamic UPDATE with variable columns
     conn.execute(f"UPDATE propertyclaw_unit SET {', '.join(updates)} WHERE id = ?", params)
 
     audit(conn, SKILL, "prop-update-unit", "propertyclaw_unit", args.unit_id,
@@ -331,11 +335,12 @@ def get_unit(conn, args):
     if not args.unit_id:
         err("--unit-id is required")
 
+    u = Table("propertyclaw_unit")
+    p = Table("propertyclaw_property")
     row = conn.execute(
-        """SELECT u.*, p.name as property_name, p.address_line1, p.city, p.state
-           FROM propertyclaw_unit u
-           JOIN propertyclaw_property p ON u.property_id = p.id
-           WHERE u.id = ?""",
+        Q.from_(u).join(p).on(u.property_id == p.id)
+        .select(u.star, p.name.as_("property_name"), p.address_line1, p.city, p.state)
+        .where(u.id == P()).get_sql(),
         (args.unit_id,)).fetchone()
     if not row:
         err(f"Unit {args.unit_id} not found")
@@ -347,6 +352,7 @@ def get_unit(conn, args):
 # list-units
 # ---------------------------------------------------------------------------
 def list_units(conn, args):
+    # PyPika: skipped — dynamic WHERE with optional filters
     params = []
     where = ["1=1"]
 
@@ -395,9 +401,11 @@ def add_amenity(conn, args):
             err(f"Unit {args.unit_id} not found")
 
     amenity_id = str(uuid.uuid4())
-    conn.execute(
-        """INSERT INTO propertyclaw_amenity (id, property_id, unit_id, amenity_scope, name, description)
-           VALUES (?,?,?,?,?,?)""",
+    sql, _ = insert_row("propertyclaw_amenity", {
+        "id": P(), "property_id": P(), "unit_id": P(), "amenity_scope": P(),
+        "name": P(), "description": P(),
+    })
+    conn.execute(sql,
         (amenity_id, args.property_id, args.unit_id, scope,
          args.amenity_name, args.description))
 
@@ -409,17 +417,18 @@ def add_amenity(conn, args):
 # list-amenities
 # ---------------------------------------------------------------------------
 def list_amenities(conn, args):
+    _ta = Table("propertyclaw_amenity")
     if args.unit_id:
         rows = conn.execute(
-            "SELECT * FROM propertyclaw_amenity WHERE unit_id = ? ORDER BY name",
+            Q.from_(_ta).select(_ta.star).where(_ta.unit_id == P()).orderby(_ta.name).get_sql(),
             (args.unit_id,)).fetchall()
     elif args.property_id:
         rows = conn.execute(
-            "SELECT * FROM propertyclaw_amenity WHERE property_id = ? ORDER BY name",
+            Q.from_(_ta).select(_ta.star).where(_ta.property_id == P()).orderby(_ta.name).get_sql(),
             (args.property_id,)).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM propertyclaw_amenity ORDER BY name").fetchall()
+            Q.from_(_ta).select(_ta.star).orderby(_ta.name).get_sql()).fetchall()
 
     ok({"amenities": [row_to_dict(r) for r in rows], "count": len(rows)})
 
@@ -435,7 +444,8 @@ def delete_amenity(conn, args):
     if not row:
         err(f"Amenity {args.amenity_id} not found")
 
-    conn.execute("DELETE FROM propertyclaw_amenity WHERE id = ?", (args.amenity_id,))
+    _ta = Table("propertyclaw_amenity")
+    conn.execute(Q.from_(_ta).delete().where(_ta.id == P()).get_sql(), (args.amenity_id,))
     conn.commit()
     ok({"deleted": args.amenity_id})
 
@@ -454,10 +464,11 @@ def add_photo(conn, args):
         err(f"--photo-scope must be one of: {', '.join(VALID_PHOTO_SCOPES)}")
 
     photo_id = str(uuid.uuid4())
-    conn.execute(
-        """INSERT INTO propertyclaw_property_photo
-           (id, property_id, unit_id, photo_scope, file_url, description)
-           VALUES (?,?,?,?,?,?)""",
+    sql, _ = insert_row("propertyclaw_property_photo", {
+        "id": P(), "property_id": P(), "unit_id": P(), "photo_scope": P(),
+        "file_url": P(), "description": P(),
+    })
+    conn.execute(sql,
         (photo_id, args.property_id, args.unit_id, scope,
          args.file_url, args.description))
 
@@ -474,8 +485,9 @@ def list_photos(conn, args):
     elif args.property_id:
         rows = conn.execute(Q.from_(Table("propertyclaw_property_photo")).select(Table("propertyclaw_property_photo").star).where(Field("property_id") == P()).orderby(Field("uploaded_at"), order=Order.desc).get_sql(), (args.property_id,)).fetchall()
     else:
+        _tp = Table("propertyclaw_property_photo")
         rows = conn.execute(
-            "SELECT * FROM propertyclaw_property_photo ORDER BY uploaded_at DESC").fetchall()
+            Q.from_(_tp).select(_tp.star).orderby(_tp.uploaded_at, order=Order.desc).get_sql()).fetchall()
 
     ok({"photos": [row_to_dict(r) for r in rows], "count": len(rows)})
 
@@ -491,7 +503,8 @@ def delete_photo(conn, args):
     if not row:
         err(f"Photo {args.photo_id} not found")
 
-    conn.execute("DELETE FROM propertyclaw_property_photo WHERE id = ?", (args.photo_id,))
+    _tp = Table("propertyclaw_property_photo")
+    conn.execute(Q.from_(_tp).delete().where(_tp.id == P()).get_sql(), (args.photo_id,))
     conn.commit()
     ok({"deleted": args.photo_id})
 

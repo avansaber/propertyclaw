@@ -116,6 +116,7 @@ def update_application(conn, args):
 
     updates.append("updated_at = datetime('now')")
     params.append(args.application_id)
+    # PyPika: skipped — dynamic UPDATE with variable columns
     conn.execute(f"UPDATE propertyclaw_application SET {', '.join(updates)} WHERE id = ?", params)
     conn.commit()
     ok({"application_id": args.application_id, "updated_fields": changed})
@@ -151,6 +152,7 @@ def get_application(conn, args):
 # list-applications
 # ---------------------------------------------------------------------------
 def list_applications(conn, args):
+    # PyPika: skipped — dynamic WHERE with multi-table JOIN
     params = []; where = ["1=1"]
     if args.company_id:
         where.append("a.company_id = ?"); params.append(args.company_id)
@@ -188,9 +190,10 @@ def approve_application(conn, args):
         err(f"Application must be in 'received' or 'screening' status (current: {app['status']})")
 
     # Check all screenings passed (if any)
+    _tsr = Table("propertyclaw_screening_request")
     failed = conn.execute(
-        "SELECT id FROM propertyclaw_screening_request WHERE application_id = ? AND result = 'fail'",
-        (args.application_id,)).fetchone()
+        Q.from_(_tsr).select(_tsr.id).where(_tsr.application_id == P()).where(_tsr.result == P()).get_sql(),
+        (args.application_id, 'fail')).fetchone()
     if failed:
         err("Cannot approve — one or more screenings failed")
 
@@ -355,6 +358,7 @@ def add_document(conn, args):
 # list-documents
 # ---------------------------------------------------------------------------
 def list_documents(conn, args):
+    # PyPika: skipped — dynamic WHERE with optional filters
     params = []; where = ["1=1"]
     if args.customer_id:
         where.append("customer_id = ?"); params.append(args.customer_id)
@@ -383,7 +387,8 @@ def delete_document(conn, args):
     if not conn.execute(Q.from_(Table("propertyclaw_tenant_document")).select(Field("id")).where(Field("id") == P()).get_sql(), (args.document_id,)).fetchone():
         err(f"Document {args.document_id} not found")
 
-    conn.execute("DELETE FROM propertyclaw_tenant_document WHERE id = ?", (args.document_id,))
+    _ttd = Table("propertyclaw_tenant_document")
+    conn.execute(Q.from_(_ttd).delete().where(_ttd.id == P()).get_sql(), (args.document_id,))
     conn.commit()
     ok({"deleted": args.document_id})
 

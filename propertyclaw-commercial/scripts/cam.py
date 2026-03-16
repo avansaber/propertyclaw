@@ -51,13 +51,17 @@ def _validate_pool(conn, pool_id):
 
 def _recalc_pool_actual(conn, pool_id):
     """Recalculate total_actual for a CAM pool from its expenses."""
-    row = conn.execute(
-        "SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) as total FROM commercial_cam_expense WHERE pool_id = ?",
-        (pool_id,)).fetchone()
+    from erpclaw_lib.vendor.pypika.terms import LiteralValue
+    t_exp = Table("commercial_cam_expense")
+    q = (Q.from_(t_exp)
+         .select(LiteralValue('COALESCE(SUM(CAST("amount" AS REAL)), 0)').as_("total"))
+         .where(t_exp.pool_id == P()))
+    row = conn.execute(q.get_sql(), (pool_id,)).fetchone()
     total = round_currency(to_decimal(str(row["total"])))
-    conn.execute(
-        "UPDATE commercial_cam_pool SET total_actual = ?, updated_at = datetime('now') WHERE id = ?",
-        (str(total), pool_id))
+    sql = update_row("commercial_cam_pool",
+                     data={"total_actual": P(), "updated_at": LiteralValue("datetime('now')")},
+                     where={"id": P()})
+    conn.execute(sql, (str(total), pool_id))
     return total
 
 
@@ -86,13 +90,13 @@ def add_cam_pool(conn, args):
     pool_name = get_next_name(conn, "commercial_cam_pool")
 
     try:
-        conn.execute(
-            """INSERT INTO commercial_cam_pool
-               (id, naming_series, company_id, property_name, pool_year,
-                total_budget, total_actual, pool_status, notes)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (pool_id, pool_name, args.company_id, property_name, pool_year,
-             str(budget_dec), "0", "open", getattr(args, "notes", None)))
+        sql, _ = insert_row("commercial_cam_pool", {
+            "id": P(), "naming_series": P(), "company_id": P(), "property_name": P(),
+            "pool_year": P(), "total_budget": P(), "total_actual": P(),
+            "pool_status": P(), "notes": P(),
+        })
+        conn.execute(sql, (pool_id, pool_name, args.company_id, property_name, pool_year,
+                           str(budget_dec), "0", "open", getattr(args, "notes", None)))
     except Exception as e:
         if "UNIQUE" in str(e):
             err(f"CAM pool already exists for {property_name} in {pool_year}")
@@ -112,28 +116,35 @@ def list_cam_pools(conn, args):
     if not args.company_id:
         err("--company-id is required")
 
+    t = Table("commercial_cam_pool")
+    q_count = Q.from_(t).select(fn.Count("*")).where(t.company_id == P())
+    q_rows = Q.from_(t).select(t.star).where(t.company_id == P())
     params = [args.company_id]
-    where = ["company_id = ?"]
 
     pool_year = getattr(args, "pool_year", None)
     if pool_year:
-        where.append("pool_year = ?"); params.append(pool_year)
+        q_count = q_count.where(t.pool_year == P())
+        q_rows = q_rows.where(t.pool_year == P())
+        params.append(pool_year)
     pool_status = getattr(args, "pool_status", None)
     if pool_status:
-        where.append("pool_status = ?"); params.append(pool_status)
+        q_count = q_count.where(t.pool_status == P())
+        q_rows = q_rows.where(t.pool_status == P())
+        params.append(pool_status)
     property_name = getattr(args, "property_name", None)
     if property_name:
-        where.append("property_name = ?"); params.append(property_name)
+        q_count = q_count.where(t.property_name == P())
+        q_rows = q_rows.where(t.property_name == P())
+        params.append(property_name)
 
-    wc = " AND ".join(where)
-    total = conn.execute(
-        f"SELECT COUNT(*) FROM commercial_cam_pool WHERE {wc}", params).fetchone()[0]
+    total = conn.execute(q_count.get_sql(), params).fetchone()[0]
 
     limit = int(args.limit); offset = int(args.offset)
-    rows = conn.execute(
-        f"""SELECT * FROM commercial_cam_pool
-            WHERE {wc} ORDER BY pool_year DESC, created_at DESC LIMIT ? OFFSET ?""",
-        params + [limit, offset]).fetchall()
+    page_params = list(params) + [limit, offset]
+    q_rows = (q_rows.orderby(t.pool_year, order=Order.desc)
+              .orderby(t.created_at, order=Order.desc)
+              .limit(P()).offset(P()))
+    rows = conn.execute(q_rows.get_sql(), page_params).fetchall()
 
     ok({"pools": [row_to_dict(r) for r in rows], "total_count": total,
         "limit": limit, "offset": offset, "has_more": offset + limit < total})
@@ -147,19 +158,22 @@ def get_cam_pool(conn, args):
     data = row_to_dict(pool)
 
     # Include expenses
-    expenses = conn.execute(
-        "SELECT * FROM commercial_cam_expense WHERE pool_id = ? ORDER BY expense_date DESC",
-        (pool["id"],)).fetchall()
+    t_exp = Table("commercial_cam_expense")
+    q_exp = (Q.from_(t_exp).select(t_exp.star)
+             .where(t_exp.pool_id == P())
+             .orderby(t_exp.expense_date, order=Order.desc))
+    expenses = conn.execute(q_exp.get_sql(), (pool["id"],)).fetchall()
     data["expenses"] = [row_to_dict(e) for e in expenses]
     data["expense_count"] = len(expenses)
 
     # Include allocations
-    allocations = conn.execute(
-        """SELECT a.*, l.tenant_name, l.property_name
-           FROM commercial_cam_allocation a
-           JOIN commercial_nnn_lease l ON a.lease_id = l.id
-           WHERE a.pool_id = ?""",
-        (pool["id"],)).fetchall()
+    t_alloc = Table("commercial_cam_allocation")
+    t_lease = Table("commercial_nnn_lease")
+    q_alloc = (Q.from_(t_alloc)
+               .join(t_lease).on(t_alloc.lease_id == t_lease.id)
+               .select(t_alloc.star, t_lease.tenant_name, t_lease.property_name)
+               .where(t_alloc.pool_id == P()))
+    allocations = conn.execute(q_alloc.get_sql(), (pool["id"],)).fetchall()
     data["allocations"] = [row_to_dict(a) for a in allocations]
     data["allocation_count"] = len(allocations)
 
@@ -228,13 +242,13 @@ def add_cam_expense(conn, args):
         err("--amount must be greater than zero")
 
     expense_id = str(uuid.uuid4())
-    conn.execute(
-        """INSERT INTO commercial_cam_expense
-           (id, pool_id, expense_date, category, vendor, amount, description, company_id)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        (expense_id, pool_id, expense_date, category,
-         getattr(args, "vendor", None), str(amount_dec),
-         getattr(args, "description", None), pool["company_id"]))
+    sql, _ = insert_row("commercial_cam_expense", {
+        "id": P(), "pool_id": P(), "expense_date": P(), "category": P(),
+        "vendor": P(), "amount": P(), "description": P(), "company_id": P(),
+    })
+    conn.execute(sql, (expense_id, pool_id, expense_date, category,
+                       getattr(args, "vendor", None), str(amount_dec),
+                       getattr(args, "description", None), pool["company_id"]))
 
     # Recalculate pool total
     _recalc_pool_actual(conn, pool_id)
@@ -252,17 +266,17 @@ def list_cam_expenses(conn, args):
         err("--pool-id is required")
     _validate_pool(conn, pool_id)
 
+    t = Table("commercial_cam_expense")
+    q = Q.from_(t).select(t.star).where(t.pool_id == P())
     params = [pool_id]
-    where = ["pool_id = ?"]
 
     category = getattr(args, "category", None)
     if category:
-        where.append("category = ?"); params.append(category)
+        q = q.where(t.category == P())
+        params.append(category)
 
-    wc = " AND ".join(where)
-    rows = conn.execute(
-        f"SELECT * FROM commercial_cam_expense WHERE {wc} ORDER BY expense_date DESC",
-        params).fetchall()
+    q = q.orderby(t.expense_date, order=Order.desc)
+    rows = conn.execute(q.get_sql(), params).fetchall()
 
     total_amount = sum(to_decimal(r["amount"]) for r in rows)
     ok({"expenses": [row_to_dict(r) for r in rows], "count": len(rows),
@@ -297,13 +311,13 @@ def add_cam_allocation(conn, args):
 
     alloc_id = str(uuid.uuid4())
     try:
-        conn.execute(
-            """INSERT INTO commercial_cam_allocation
-               (id, pool_id, lease_id, share_pct, budgeted_amount,
-                actual_amount, variance, company_id)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (alloc_id, pool_id, lease_id, str(share_pct), str(budgeted_amount),
-             str(actual_amount), str(variance), pool["company_id"]))
+        sql, _ = insert_row("commercial_cam_allocation", {
+            "id": P(), "pool_id": P(), "lease_id": P(), "share_pct": P(),
+            "budgeted_amount": P(), "actual_amount": P(), "variance": P(),
+            "company_id": P(),
+        })
+        conn.execute(sql, (alloc_id, pool_id, lease_id, str(share_pct), str(budgeted_amount),
+                           str(actual_amount), str(variance), pool["company_id"]))
     except Exception as e:
         if "UNIQUE" in str(e):
             err(f"Allocation already exists for lease {lease_id} in pool {pool_id}")
@@ -324,13 +338,14 @@ def list_cam_allocations(conn, args):
         err("--pool-id is required")
     _validate_pool(conn, pool_id)
 
-    rows = conn.execute(
-        """SELECT a.*, l.tenant_name, l.property_name, l.suite_number
-           FROM commercial_cam_allocation a
-           JOIN commercial_nnn_lease l ON a.lease_id = l.id
-           WHERE a.pool_id = ?
-           ORDER BY l.tenant_name""",
-        (pool_id,)).fetchall()
+    t_a = Table("commercial_cam_allocation")
+    t_l = Table("commercial_nnn_lease")
+    q = (Q.from_(t_a)
+         .join(t_l).on(t_a.lease_id == t_l.id)
+         .select(t_a.star, t_l.tenant_name, t_l.property_name, t_l.suite_number)
+         .where(t_a.pool_id == P())
+         .orderby(t_l.tenant_name))
+    rows = conn.execute(q.get_sql(), (pool_id,)).fetchall()
 
     total_share = sum(to_decimal(r["share_pct"]) for r in rows)
     total_budgeted = sum(to_decimal(r["budgeted_amount"]) for r in rows)
@@ -360,9 +375,9 @@ def run_cam_reconciliation(conn, args):
     budget = to_decimal(pool["total_budget"])
 
     # Update each allocation with actual amounts
-    allocations = conn.execute(
-        "SELECT * FROM commercial_cam_allocation WHERE pool_id = ?",
-        (pool_id,)).fetchall()
+    t_alloc = Table("commercial_cam_allocation")
+    q_allocs = Q.from_(t_alloc).select(t_alloc.star).where(t_alloc.pool_id == P())
+    allocations = conn.execute(q_allocs.get_sql(), (pool_id,)).fetchall()
 
     results = []
     for alloc in allocations:
@@ -371,12 +386,12 @@ def run_cam_reconciliation(conn, args):
         budgeted_share = round_currency(budget * share_pct / Decimal("100"))
         variance = round_currency(actual_share - budgeted_share)
 
-        conn.execute(
-            """UPDATE commercial_cam_allocation
-               SET actual_amount = ?, budgeted_amount = ?, variance = ?,
-                   updated_at = datetime('now')
-               WHERE id = ?""",
-            (str(actual_share), str(budgeted_share), str(variance), alloc["id"]))
+        from erpclaw_lib.vendor.pypika.terms import LiteralValue
+        sql_alloc = update_row("commercial_cam_allocation",
+                               data={"actual_amount": P(), "budgeted_amount": P(),
+                                     "variance": P(), "updated_at": LiteralValue("datetime('now')")},
+                               where={"id": P()})
+        conn.execute(sql_alloc, (str(actual_share), str(budgeted_share), str(variance), alloc["id"]))
 
         results.append({
             "allocation_id": alloc["id"],
@@ -388,9 +403,10 @@ def run_cam_reconciliation(conn, args):
         })
 
     # Mark pool as reconciling
-    conn.execute(
-        "UPDATE commercial_cam_pool SET pool_status = 'reconciling', updated_at = datetime('now') WHERE id = ?",
-        (pool_id,))
+    sql_pool = update_row("commercial_cam_pool",
+                          data={"pool_status": P(), "updated_at": LiteralValue("datetime('now')")},
+                          where={"id": P()})
+    conn.execute(sql_pool, ("reconciling", pool_id))
 
     reconciliation_date = getattr(args, "reconciliation_date", None) or \
         datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -420,26 +436,27 @@ def cam_reconciliation_report(conn, args):
     pool_year = getattr(args, "pool_year", None)
     property_name = getattr(args, "property_name", None)
 
+    t_p = Table("commercial_cam_pool")
+    q_pools = (Q.from_(t_p).select(t_p.star).where(t_p.company_id == P()))
     params = [args.company_id]
-    where = ["p.company_id = ?"]
     if pool_year:
-        where.append("p.pool_year = ?"); params.append(pool_year)
+        q_pools = q_pools.where(t_p.pool_year == P())
+        params.append(pool_year)
     if property_name:
-        where.append("p.property_name = ?"); params.append(property_name)
+        q_pools = q_pools.where(t_p.property_name == P())
+        params.append(property_name)
+    q_pools = q_pools.orderby(t_p.pool_year, order=Order.desc).orderby(t_p.property_name)
+    pools = conn.execute(q_pools.get_sql(), params).fetchall()
 
-    wc = " AND ".join(where)
-    pools = conn.execute(
-        f"SELECT * FROM commercial_cam_pool p WHERE {wc} ORDER BY p.pool_year DESC, p.property_name",
-        params).fetchall()
-
+    t_a = Table("commercial_cam_allocation")
+    t_l = Table("commercial_nnn_lease")
     report = []
     for pool in pools:
-        allocations = conn.execute(
-            """SELECT a.*, l.tenant_name
-               FROM commercial_cam_allocation a
-               JOIN commercial_nnn_lease l ON a.lease_id = l.id
-               WHERE a.pool_id = ?""",
-            (pool["id"],)).fetchall()
+        q_alloc = (Q.from_(t_a)
+                   .join(t_l).on(t_a.lease_id == t_l.id)
+                   .select(t_a.star, t_l.tenant_name)
+                   .where(t_a.pool_id == P()))
+        allocations = conn.execute(q_alloc.get_sql(), (pool["id"],)).fetchall()
 
         pool_data = row_to_dict(pool)
         pool_data["budget_variance"] = str(round_currency(

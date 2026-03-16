@@ -140,6 +140,7 @@ def update_work_order(conn, args):
 
     updates.append("updated_at = datetime('now')")
     params.append(args.work_order_id)
+    # PyPika: skipped — dynamic UPDATE with variable columns
     conn.execute(f"UPDATE propertyclaw_work_order SET {', '.join(updates)} WHERE id = ?", params)
     audit(conn, SKILL, "prop-update-work-order", "propertyclaw_work_order", args.work_order_id,
           new_values={"updated_fields": changed})
@@ -186,6 +187,7 @@ def get_work_order(conn, args):
 # list-work-orders
 # ---------------------------------------------------------------------------
 def list_work_orders(conn, args):
+    # PyPika: skipped — dynamic WHERE with multi-table JOIN and CASE ORDER BY
     params = []; where = ["1=1"]
     if args.company_id:
         where.append("w.company_id = ?"); params.append(args.company_id)
@@ -274,6 +276,7 @@ def update_vendor_assignment(conn, args):
 
     updates.append("updated_at = datetime('now')")
     params.append(args.assignment_id)
+    # PyPika: skipped — dynamic UPDATE with variable columns
     conn.execute(f"UPDATE propertyclaw_vendor_assignment SET {', '.join(updates)} WHERE id = ?", params)
 
     # If vendor is on_site, update work order to in_progress
@@ -365,11 +368,12 @@ def add_work_order_item(conn, args):
 # list-work-order-items
 # ---------------------------------------------------------------------------
 def list_work_order_items(conn, args):
+    _twi = Table("propertyclaw_work_order_item")
     if args.work_order_id:
-        rows = conn.execute(Q.from_(Table("propertyclaw_work_order_item")).select(Table("propertyclaw_work_order_item").star).where(Field("work_order_id") == P()).get_sql(), (args.work_order_id,)).fetchall()
+        rows = conn.execute(Q.from_(_twi).select(_twi.star).where(_twi.work_order_id == P()).get_sql(), (args.work_order_id,)).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM propertyclaw_work_order_item ORDER BY created_at DESC").fetchall()
+            Q.from_(_twi).select(_twi.star).orderby(_twi.created_at, order=Order.desc).get_sql()).fetchall()
     total = sum(to_decimal(r["amount"]) for r in rows)
     ok({"items": [row_to_dict(r) for r in rows], "count": len(rows),
         "total_amount": str(round_currency(total))})
@@ -439,6 +443,7 @@ def get_inspection(conn, args):
 # list-inspections
 # ---------------------------------------------------------------------------
 def list_inspections(conn, args):
+    # PyPika: skipped — dynamic WHERE with multi-table JOIN
     params = []; where = ["1=1"]
     if args.company_id:
         where.append("i.company_id = ?"); params.append(args.company_id)
@@ -503,13 +508,15 @@ def add_inspection_item(conn, args):
 # list-inspection-items
 # ---------------------------------------------------------------------------
 def list_inspection_items(conn, args):
+    _tii = Table("propertyclaw_inspection_item")
     if args.inspection_id:
         rows = conn.execute(
-            "SELECT * FROM propertyclaw_inspection_item WHERE inspection_id = ? ORDER BY area, item",
+            Q.from_(_tii).select(_tii.star).where(_tii.inspection_id == P())
+            .orderby(_tii.area).orderby(_tii.item).get_sql(),
             (args.inspection_id,)).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM propertyclaw_inspection_item ORDER BY area, item").fetchall()
+            Q.from_(_tii).select(_tii.star).orderby(_tii.area).orderby(_tii.item).get_sql()).fetchall()
     ok({"items": [row_to_dict(r) for r in rows], "count": len(rows)})
 
 
