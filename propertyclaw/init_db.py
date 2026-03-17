@@ -20,7 +20,8 @@ DISPLAY_NAME = "PropertyClaw"
 
 def create_propertyclaw_tables(db_path):
     conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA foreign_keys=ON")
+    from erpclaw_lib.db import setup_pragmas
+    setup_pragmas(conn)
 
     # Verify foundation exists
     tables = [r[0] for r in conn.execute(
@@ -69,8 +70,8 @@ def create_propertyclaw_tables(db_path):
             management_fee_pct TEXT,
             status          TEXT NOT NULL DEFAULT 'active'
                             CHECK(status IN ('active','inactive','archived')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_property_company
             ON propertyclaw_property(company_id);
@@ -95,8 +96,8 @@ def create_propertyclaw_tables(db_path):
             market_rent     TEXT NOT NULL DEFAULT '0',
             status          TEXT NOT NULL DEFAULT 'available'
                             CHECK(status IN ('available','occupied','maintenance','reserved')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now')),
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(property_id, unit_number)
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_unit_property
@@ -112,7 +113,7 @@ def create_propertyclaw_tables(db_path):
             amenity_scope   TEXT NOT NULL CHECK(amenity_scope IN ('property','unit')),
             name            TEXT NOT NULL,
             description     TEXT,
-            created_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_amenity_property
             ON propertyclaw_amenity(property_id);
@@ -127,7 +128,7 @@ def create_propertyclaw_tables(db_path):
             photo_scope     TEXT NOT NULL CHECK(photo_scope IN ('property','unit','inspection')),
             file_url        TEXT NOT NULL,
             description     TEXT,
-            uploaded_at     TEXT DEFAULT (datetime('now'))
+            uploaded_at     TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_photo_property
             ON propertyclaw_property_photo(property_id);
@@ -159,8 +160,8 @@ def create_propertyclaw_tables(db_path):
             recurring_template_id TEXT REFERENCES recurring_invoice_template(id) ON DELETE RESTRICT,
             status          TEXT NOT NULL DEFAULT 'draft'
                             CHECK(status IN ('draft','active','expired','terminated','renewed')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_lease_company
             ON propertyclaw_lease(company_id);
@@ -187,7 +188,7 @@ def create_propertyclaw_tables(db_path):
                             CHECK(frequency IN ('weekly','biweekly','monthly')),
             start_date      TEXT NOT NULL,
             end_date        TEXT,
-            created_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_rent_sched_lease
             ON propertyclaw_rent_schedule(lease_id);
@@ -203,7 +204,7 @@ def create_propertyclaw_tables(db_path):
             invoice_id      TEXT REFERENCES sales_invoice(id) ON DELETE RESTRICT,
             status          TEXT NOT NULL DEFAULT 'pending'
                             CHECK(status IN ('pending','invoiced','paid','waived')),
-            created_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_charge_lease
             ON propertyclaw_lease_charge(lease_id);
@@ -223,7 +224,7 @@ def create_propertyclaw_tables(db_path):
             grace_days      INTEGER NOT NULL DEFAULT 0,
             max_cap         TEXT,
             is_default      INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0,1)),
-            created_at      TEXT DEFAULT (datetime('now')),
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(company_id, state)
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_late_fee_company
@@ -240,8 +241,8 @@ def create_propertyclaw_tables(db_path):
             rent_increase_pct TEXT,
             status          TEXT NOT NULL DEFAULT 'proposed'
                             CHECK(status IN ('proposed','accepted','rejected','expired')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_renewal_lease
             ON propertyclaw_lease_renewal(lease_id);
@@ -268,8 +269,8 @@ def create_propertyclaw_tables(db_path):
             denial_reason   TEXT,
             status          TEXT NOT NULL DEFAULT 'received'
                             CHECK(status IN ('received','screening','approved','denied','withdrawn')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_app_company
             ON propertyclaw_application(company_id);
@@ -291,7 +292,7 @@ def create_propertyclaw_tables(db_path):
             adverse_action_sent INTEGER NOT NULL DEFAULT 0 CHECK(adverse_action_sent IN (0,1)),
             adverse_action_date TEXT,
             notes           TEXT,
-            created_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_screen_app
             ON propertyclaw_screening_request(application_id);
@@ -308,7 +309,7 @@ def create_propertyclaw_tables(db_path):
             file_url        TEXT NOT NULL,
             description     TEXT,
             expiry_date     TEXT,
-            uploaded_at     TEXT DEFAULT (datetime('now'))
+            uploaded_at     TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_doc_customer
             ON propertyclaw_tenant_document(customer_id);
@@ -327,7 +328,7 @@ def create_propertyclaw_tables(db_path):
             reason          TEXT NOT NULL,
             delivery_method TEXT CHECK(delivery_method IN ('mail','email','hand')),
             delivered_date  TEXT,
-            created_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_adverse_app
             ON propertyclaw_adverse_action(application_id);
@@ -363,8 +364,8 @@ def create_propertyclaw_tables(db_path):
             permission_to_enter INTEGER NOT NULL DEFAULT 0 CHECK(permission_to_enter IN (0,1)),
             status          TEXT NOT NULL DEFAULT 'open'
                             CHECK(status IN ('open','assigned','in_progress','completed','cancelled')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_wo_company
             ON propertyclaw_work_order(company_id);
@@ -388,7 +389,7 @@ def create_propertyclaw_tables(db_path):
             quantity        TEXT NOT NULL DEFAULT '1',
             rate            TEXT NOT NULL DEFAULT '0',
             amount          TEXT NOT NULL DEFAULT '0',
-            created_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_woi_wo
             ON propertyclaw_work_order_item(work_order_id);
@@ -409,8 +410,8 @@ def create_propertyclaw_tables(db_path):
             notes           TEXT,
             status          TEXT NOT NULL DEFAULT 'scheduled'
                             CHECK(status IN ('scheduled','completed','reviewed')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_insp_company
             ON propertyclaw_inspection(company_id);
@@ -433,7 +434,7 @@ def create_propertyclaw_tables(db_path):
             description     TEXT,
             photo_url       TEXT,
             estimated_repair_cost TEXT,
-            created_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_inspi_insp
             ON propertyclaw_inspection_item(inspection_id);
@@ -448,8 +449,8 @@ def create_propertyclaw_tables(db_path):
             actual_arrival  TEXT,
             status          TEXT NOT NULL DEFAULT 'assigned'
                             CHECK(status IN ('assigned','accepted','declined','en_route','on_site','completed')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_va_wo
             ON propertyclaw_vendor_assignment(work_order_id);
@@ -470,8 +471,8 @@ def create_propertyclaw_tables(db_path):
             bank_name       TEXT,
             status          TEXT NOT NULL DEFAULT 'active'
                             CHECK(status IN ('active','frozen','closed')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now')),
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(company_id, property_id)
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_trust_company
@@ -497,8 +498,8 @@ def create_propertyclaw_tables(db_path):
             payment_entry_id TEXT REFERENCES payment_entry(id) ON DELETE RESTRICT,
             status          TEXT NOT NULL DEFAULT 'draft'
                             CHECK(status IN ('draft','sent','paid')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_owner_stmt_company
             ON propertyclaw_owner_statement(company_id);
@@ -524,8 +525,8 @@ def create_propertyclaw_tables(db_path):
             deduction_amount TEXT NOT NULL DEFAULT '0',
             status          TEXT NOT NULL DEFAULT 'held'
                             CHECK(status IN ('held','partially_returned','returned','forfeited')),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_deposit_lease
             ON propertyclaw_security_deposit(lease_id);
@@ -543,7 +544,7 @@ def create_propertyclaw_tables(db_path):
             amount          TEXT NOT NULL DEFAULT '0',
             invoice_url     TEXT,
             receipt_url     TEXT,
-            created_at      TEXT DEFAULT (datetime('now'))
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_deduction_deposit
             ON propertyclaw_deposit_deduction(security_deposit_id);
@@ -561,8 +562,8 @@ def create_propertyclaw_tables(db_path):
                             CHECK(filing_status IN ('pending','filed','corrected')),
             filed_date      TEXT,
             w9_on_file      INTEGER NOT NULL DEFAULT 0 CHECK(w9_on_file IN (0,1)),
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now')),
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(company_id, supplier_id, tax_year, form_type)
         );
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_1099_company
@@ -587,10 +588,15 @@ def create_propertyclaw_tables(db_path):
     for company_row in companies:
         company_id = company_row[0]
         for entity_type, prefix in naming_series:
-            conn.execute("""
-                INSERT OR IGNORE INTO naming_series (id, entity_type, prefix, current_value, company_id)
-                VALUES (?, ?, ?, 0, ?)
-            """, (str(uuid.uuid4()), entity_type, prefix, company_id))
+            existing = conn.execute(
+                "SELECT 1 FROM naming_series WHERE entity_type = ? AND prefix = ? AND company_id = ?",
+                (entity_type, prefix, company_id)
+            ).fetchone()
+            if not existing:
+                conn.execute("""
+                    INSERT INTO naming_series (id, entity_type, prefix, current_value, company_id)
+                    VALUES (?, ?, ?, 0, ?)
+                """, (str(uuid.uuid4()), entity_type, prefix, company_id))
 
     conn.commit()
     conn.close()

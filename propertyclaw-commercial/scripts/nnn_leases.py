@@ -159,7 +159,8 @@ def update_nnn_lease(conn, args):
     if not changed:
         err("No fields to update")
 
-    updates.append("updated_at = datetime('now')")
+    updates.append("updated_at = ?")
+    params.append(datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))
     params.append(args.lease_id)
     conn.execute(f"UPDATE commercial_nnn_lease SET {', '.join(updates)} WHERE id = ?", params)
     conn.commit()
@@ -371,7 +372,7 @@ def nnn_lease_summary(conn, args):
 
     # Total base rent (active leases)
     q_rent = (Q.from_(t)
-              .select(LiteralValue('COALESCE(SUM(CAST("base_rent" AS REAL)), 0)').as_("total_rent"))
+              .select(LiteralValue('COALESCE(SUM(CAST("base_rent" AS NUMERIC)), 0)').as_("total_rent"))
               .where(t.company_id == P()).where(t.lease_status == "active"))
     rent_row = conn.execute(q_rent.get_sql(), (args.company_id,)).fetchone()
     total_base_rent = str(round_currency(to_decimal(str(rent_row["total_rent"]))))

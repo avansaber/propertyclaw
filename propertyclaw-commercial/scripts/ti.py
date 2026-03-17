@@ -16,7 +16,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
 
-    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row, now
     # Register naming prefixes
     ENTITY_PREFIXES.setdefault("commercial_ti_allowance", "CTI-")
 except ImportError:
@@ -71,7 +71,7 @@ def _recalc_allowance(conn, allowance_id):
     # Sum approved or paid draws only
     t_draw = Table("commercial_ti_draw")
     q_drawn = (Q.from_(t_draw)
-               .select(LiteralValue('COALESCE(SUM(CAST("amount" AS REAL)), 0)').as_("total_drawn"))
+               .select(LiteralValue('COALESCE(SUM(CAST("amount" AS NUMERIC)), 0)').as_("total_drawn"))
                .where(t_draw.allowance_id == P())
                .where(t_draw.draw_status.isin(["approved", "paid"])))
     row = conn.execute(q_drawn.get_sql(), (allowance_id,)).fetchone()
@@ -80,7 +80,7 @@ def _recalc_allowance(conn, allowance_id):
 
     sql = update_row("commercial_ti_allowance",
                      data={"disbursed_amount": P(), "remaining_amount": P(),
-                           "updated_at": LiteralValue("datetime('now')")},
+                           "updated_at": now()},
                      where={"id": P()})
     conn.execute(sql, (str(disbursed), str(remaining), allowance_id))
 
@@ -183,7 +183,8 @@ def update_ti_allowance(conn, args):
     if not changed:
         err("No fields to update")
 
-    updates.append("updated_at = datetime('now')")
+    updates.append("updated_at = ?")
+    params.append(datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))
     params.append(allowance_id)
     conn.execute(f"UPDATE commercial_ti_allowance SET {', '.join(updates)} WHERE id = ?", params)
     conn.commit()

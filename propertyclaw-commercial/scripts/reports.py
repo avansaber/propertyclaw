@@ -56,7 +56,7 @@ def noi_report(conn, args):
     t_p = Table("commercial_cam_pool")
     q_exp = (Q.from_(t_e)
              .join(t_p).on(t_e.pool_id == t_p.id)
-             .select(LiteralValue('COALESCE(SUM(CAST("commercial_cam_expense"."amount" AS REAL)), 0)').as_("total_expenses"))
+             .select(LiteralValue('COALESCE(SUM(CAST("commercial_cam_expense"."amount" AS NUMERIC)), 0)').as_("total_expenses"))
              .where(t_p.company_id == P())
              .where(t_p.pool_status.isin(["open", "reconciling"])))
     exp_params = [args.company_id]
@@ -110,7 +110,7 @@ def cap_rate_analysis(conn, args):
     t_p = Table("commercial_cam_pool")
     q_exp = (Q.from_(t_e)
              .join(t_p).on(t_e.pool_id == t_p.id)
-             .select(LiteralValue('COALESCE(SUM(CAST("commercial_cam_expense"."amount" AS REAL)), 0)').as_("total_expenses"))
+             .select(LiteralValue('COALESCE(SUM(CAST("commercial_cam_expense"."amount" AS NUMERIC)), 0)').as_("total_expenses"))
              .where(t_p.company_id == P()))
     exp_params = [args.company_id]
     if property_name:

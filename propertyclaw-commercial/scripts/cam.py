@@ -18,7 +18,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
 
-    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row, now
     # Register naming prefixes
     ENTITY_PREFIXES.setdefault("commercial_cam_pool", "CCAM-")
 except ImportError:
@@ -54,12 +54,12 @@ def _recalc_pool_actual(conn, pool_id):
     from erpclaw_lib.vendor.pypika.terms import LiteralValue
     t_exp = Table("commercial_cam_expense")
     q = (Q.from_(t_exp)
-         .select(LiteralValue('COALESCE(SUM(CAST("amount" AS REAL)), 0)').as_("total"))
+         .select(LiteralValue('COALESCE(SUM(CAST("amount" AS NUMERIC)), 0)').as_("total"))
          .where(t_exp.pool_id == P()))
     row = conn.execute(q.get_sql(), (pool_id,)).fetchone()
     total = round_currency(to_decimal(str(row["total"])))
     sql = update_row("commercial_cam_pool",
-                     data={"total_actual": P(), "updated_at": LiteralValue("datetime('now')")},
+                     data={"total_actual": P(), "updated_at": now()},
                      where={"id": P()})
     conn.execute(sql, (str(total), pool_id))
     return total
@@ -210,7 +210,8 @@ def update_cam_pool(conn, args):
     if not changed:
         err("No fields to update")
 
-    updates.append("updated_at = datetime('now')")
+    updates.append("updated_at = ?")
+    params.append(datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))
     params.append(pool_id)
     conn.execute(f"UPDATE commercial_cam_pool SET {', '.join(updates)} WHERE id = ?", params)
     conn.commit()
@@ -389,7 +390,7 @@ def run_cam_reconciliation(conn, args):
         from erpclaw_lib.vendor.pypika.terms import LiteralValue
         sql_alloc = update_row("commercial_cam_allocation",
                                data={"actual_amount": P(), "budgeted_amount": P(),
-                                     "variance": P(), "updated_at": LiteralValue("datetime('now')")},
+                                     "variance": P(), "updated_at": now()},
                                where={"id": P()})
         conn.execute(sql_alloc, (str(actual_share), str(budgeted_share), str(variance), alloc["id"]))
 
@@ -404,7 +405,7 @@ def run_cam_reconciliation(conn, args):
 
     # Mark pool as reconciling
     sql_pool = update_row("commercial_cam_pool",
-                          data={"pool_status": P(), "updated_at": LiteralValue("datetime('now')")},
+                          data={"pool_status": P(), "updated_at": now()},
                           where={"id": P()})
     conn.execute(sql_pool, ("reconciling", pool_id))
 

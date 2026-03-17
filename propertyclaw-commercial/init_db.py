@@ -25,9 +25,8 @@ REQUIRED_FOUNDATION = ["company", "naming_series", "audit_log"]
 def create_commercial_tables(db_path=None):
     db_path = db_path or os.environ.get("ERPCLAW_DB_PATH", DEFAULT_DB_PATH)
     conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=5000")
+    from erpclaw_lib.db import setup_pragmas
+    setup_pragmas(conn)
 
     tables = [r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
@@ -64,8 +63,8 @@ def create_commercial_tables(db_path=None):
             lease_status          TEXT NOT NULL DEFAULT 'draft'
                 CHECK(lease_status IN ('draft', 'active', 'expired', 'terminated')),
             notes                 TEXT,
-            created_at            TEXT DEFAULT (datetime('now')),
-            updated_at            TEXT DEFAULT (datetime('now')),
+            created_at            TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at            TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE RESTRICT
         )
     """)
@@ -100,8 +99,8 @@ def create_commercial_tables(db_path=None):
             tenant_share      TEXT NOT NULL DEFAULT '0',
             description       TEXT,
             company_id        TEXT NOT NULL,
-            created_at        TEXT DEFAULT (datetime('now')),
-            updated_at        TEXT DEFAULT (datetime('now')),
+            created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at        TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (lease_id) REFERENCES commercial_nnn_lease(id) ON DELETE RESTRICT,
             FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE RESTRICT
         )
@@ -133,8 +132,8 @@ def create_commercial_tables(db_path=None):
             tenant_share      TEXT NOT NULL DEFAULT '0',
             reconciled        INTEGER NOT NULL DEFAULT 0 CHECK(reconciled IN (0, 1)),
             company_id        TEXT NOT NULL,
-            created_at        TEXT DEFAULT (datetime('now')),
-            updated_at        TEXT DEFAULT (datetime('now')),
+            created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at        TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (lease_id) REFERENCES commercial_nnn_lease(id) ON DELETE RESTRICT,
             FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE RESTRICT
         )
@@ -166,8 +165,8 @@ def create_commercial_tables(db_path=None):
             pool_status       TEXT NOT NULL DEFAULT 'open'
                 CHECK(pool_status IN ('open', 'reconciling', 'closed')),
             notes             TEXT,
-            created_at        TEXT DEFAULT (datetime('now')),
-            updated_at        TEXT DEFAULT (datetime('now')),
+            created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at        TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE RESTRICT,
             UNIQUE(company_id, property_name, pool_year)
         )
@@ -197,7 +196,7 @@ def create_commercial_tables(db_path=None):
             amount          TEXT NOT NULL DEFAULT '0',
             description     TEXT,
             company_id      TEXT NOT NULL,
-            created_at      TEXT DEFAULT (datetime('now')),
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (pool_id) REFERENCES commercial_cam_pool(id) ON DELETE RESTRICT,
             FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE RESTRICT
         )
@@ -223,8 +222,8 @@ def create_commercial_tables(db_path=None):
             actual_amount    TEXT NOT NULL DEFAULT '0',
             variance         TEXT NOT NULL DEFAULT '0',
             company_id       TEXT NOT NULL,
-            created_at       TEXT DEFAULT (datetime('now')),
-            updated_at       TEXT DEFAULT (datetime('now')),
+            created_at       TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at       TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (pool_id) REFERENCES commercial_cam_pool(id) ON DELETE RESTRICT,
             FOREIGN KEY (lease_id) REFERENCES commercial_nnn_lease(id) ON DELETE RESTRICT,
             FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE RESTRICT,
@@ -259,8 +258,8 @@ def create_commercial_tables(db_path=None):
             ti_status         TEXT NOT NULL DEFAULT 'approved'
                 CHECK(ti_status IN ('approved', 'in_progress', 'completed', 'cancelled')),
             company_id        TEXT NOT NULL,
-            created_at        TEXT DEFAULT (datetime('now')),
-            updated_at        TEXT DEFAULT (datetime('now')),
+            created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at        TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (lease_id) REFERENCES commercial_nnn_lease(id) ON DELETE RESTRICT,
             FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE RESTRICT
         )
@@ -287,8 +286,8 @@ def create_commercial_tables(db_path=None):
             draw_status         TEXT NOT NULL DEFAULT 'pending'
                 CHECK(draw_status IN ('pending', 'approved', 'paid', 'rejected')),
             company_id          TEXT NOT NULL,
-            created_at          TEXT DEFAULT (datetime('now')),
-            updated_at          TEXT DEFAULT (datetime('now')),
+            created_at          TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at          TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (allowance_id) REFERENCES commercial_ti_allowance(id) ON DELETE RESTRICT,
             FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE RESTRICT
         )

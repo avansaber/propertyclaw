@@ -21,7 +21,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
     from erpclaw_lib.dependencies import check_required_tables
-    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row, dynamic_update, now
 except ImportError:
     import json as _json
     print(_json.dumps({
@@ -97,7 +97,7 @@ def get_trust_account(conn, args):
 
     # Calculate trust balance from deposits held
     balance = conn.execute(
-        """SELECT COALESCE(SUM(CAST(amount AS REAL) - CAST(deduction_amount AS REAL)), 0) as balance
+        """SELECT COALESCE(SUM(CAST(amount AS NUMERIC) - CAST(deduction_amount AS NUMERIC)), 0) as balance
            FROM propertyclaw_security_deposit
            WHERE trust_account_id = ? AND status = 'held'""",
         (args.trust_account_id,)).fetchone()
@@ -148,7 +148,7 @@ def generate_owner_statement(conn, args):
 
     # Calculate income from lease charges in period
     rent_income = conn.execute(
-        """SELECT COALESCE(SUM(CAST(lc.amount AS REAL)), 0) as total
+        """SELECT COALESCE(SUM(CAST(lc.amount AS NUMERIC)), 0) as total
            FROM propertyclaw_lease_charge lc
            JOIN propertyclaw_lease l ON lc.lease_id = l.id
            WHERE l.property_id = ? AND lc.charge_date >= ? AND lc.charge_date <= ?
@@ -156,7 +156,7 @@ def generate_owner_statement(conn, args):
         (args.property_id, args.period_start, args.period_end)).fetchone()
 
     other_income = conn.execute(
-        """SELECT COALESCE(SUM(CAST(lc.amount AS REAL)), 0) as total
+        """SELECT COALESCE(SUM(CAST(lc.amount AS NUMERIC)), 0) as total
            FROM propertyclaw_lease_charge lc
            JOIN propertyclaw_lease l ON lc.lease_id = l.id
            WHERE l.property_id = ? AND lc.charge_date >= ? AND lc.charge_date <= ?
@@ -165,7 +165,7 @@ def generate_owner_statement(conn, args):
 
     # Calculate maintenance expenses in period
     maint_expense = conn.execute(
-        """SELECT COALESCE(SUM(CAST(actual_cost AS REAL)), 0) as total
+        """SELECT COALESCE(SUM(CAST(actual_cost AS NUMERIC)), 0) as total
            FROM propertyclaw_work_order
            WHERE property_id = ? AND status = 'completed'
                  AND completed_date >= ? AND completed_date <= ?""",
@@ -312,11 +312,10 @@ def return_security_deposit(conn, args):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     new_status = "returned" if return_amount + deduction_total >= deposit_amount else "partially_returned"
 
-    from erpclaw_lib.query import LiteralValue
     conn.execute(
         update_row("propertyclaw_security_deposit",
                    data={"return_amount": P(), "return_date": P(), "status": P(),
-                         "updated_at": LiteralValue("datetime('now')")},
+                         "updated_at": now()},
                    where={"id": P()}),
         (str(return_amount), today, new_status, args.security_deposit_id))
 
@@ -368,10 +367,9 @@ def add_deposit_deduction(conn, args):
 
     # Update total deductions on deposit
     new_total = str(round_currency(current_deductions + amount))
-    from erpclaw_lib.query import LiteralValue
     conn.execute(
         update_row("propertyclaw_security_deposit",
-                   data={"deduction_amount": P(), "updated_at": LiteralValue("datetime('now')")},
+                   data={"deduction_amount": P(), "updated_at": now()},
                    where={"id": P()}),
         (new_total, args.security_deposit_id))
 
@@ -414,7 +412,7 @@ def generate_1099_report(conn, args):
     # Calculate vendor payments from completed work orders
     query = """
         SELECT s.id as supplier_id, s.name as vendor_name, s.tax_id,
-               COALESCE(SUM(CAST(w.actual_cost AS REAL)), 0) as total_paid
+               COALESCE(SUM(CAST(w.actual_cost AS NUMERIC)), 0) as total_paid
         FROM supplier s
         JOIN propertyclaw_work_order w ON w.supplier_id = s.id
         WHERE w.company_id = ? AND w.status = 'completed'
@@ -440,9 +438,10 @@ def generate_1099_report(conn, args):
             (args.company_id, v["supplier_id"], tax_year)).fetchone()
 
         if existing:
-            conn.execute(
-                "UPDATE propertyclaw_tax_1099 SET total_payments = ?, updated_at = datetime('now') WHERE id = ?",
-                (str(total), existing["id"]))
+            sql, params_u = dynamic_update("propertyclaw_tax_1099",
+                {"total_payments": str(total), "updated_at": now()},
+                where={"id": existing["id"]})
+            conn.execute(sql, params_u)
             record_id = existing["id"]
         else:
             record_id = str(uuid.uuid4())

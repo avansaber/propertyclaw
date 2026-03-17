@@ -22,7 +22,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
     from erpclaw_lib.dependencies import check_required_tables
-    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, Criterion, insert_row, update_row
+    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, Criterion, insert_row, update_row, dynamic_update, now
 except ImportError:
     import json as _json
     print(_json.dumps({
@@ -158,9 +158,9 @@ def update_property(conn, args):
     if not changed:
         err("No fields to update")
 
-    updates.append("updated_at = datetime('now')")
+    updates.append("updated_at = ?")
+    params.append(datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))
     params.append(args.property_id)
-    # PyPika: skipped — dynamic UPDATE with variable columns
     conn.execute(f"UPDATE propertyclaw_property SET {', '.join(updates)} WHERE id = ?", params)
 
     audit(conn, SKILL, "prop-update-property", "propertyclaw_property", args.property_id,
@@ -210,7 +210,7 @@ def list_properties(conn, args):
     if args.state:
         where.append("p.state = ?"); params.append(args.state)
     if args.search:
-        where.append("(p.name LIKE ? OR p.city LIKE ? OR p.address_line1 LIKE ?)")
+        where.append("(LOWER(p.name) LIKE LOWER(?) OR LOWER(p.city) LIKE LOWER(?) OR LOWER(p.address_line1) LIKE LOWER(?))")
         params.extend([f"%{args.search}%"] * 3)
 
     where_clause = " AND ".join(where)
@@ -317,9 +317,9 @@ def update_unit(conn, args):
     if not changed:
         err("No fields to update")
 
-    updates.append("updated_at = datetime('now')")
+    updates.append("updated_at = ?")
+    params.append(datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))
     params.append(args.unit_id)
-    # PyPika: skipped — dynamic UPDATE with variable columns
     conn.execute(f"UPDATE propertyclaw_unit SET {', '.join(updates)} WHERE id = ?", params)
 
     audit(conn, SKILL, "prop-update-unit", "propertyclaw_unit", args.unit_id,
@@ -362,7 +362,7 @@ def list_units(conn, args):
     if args.unit_status:
         where.append("u.status = ?"); params.append(args.unit_status)
     if args.search:
-        where.append("u.unit_number LIKE ?"); params.append(f"%{args.search}%")
+        where.append("LOWER(u.unit_number) LIKE LOWER(?)"); params.append(f"%{args.search}%")
 
     where_clause = " AND ".join(where)
 
