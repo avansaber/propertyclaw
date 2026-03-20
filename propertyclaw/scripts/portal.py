@@ -292,7 +292,7 @@ def portal_update_contact_info(conn, args):
     # Update tenant contact on the lease record (not core customer table — Art 5)
     params.append(args.customer_id)
     conn.execute(
-        f"UPDATE propertyclaw_lease SET {', '.join(updates)} WHERE tenant_id = ? AND status = 'active'",
+        f"UPDATE propertyclaw_lease SET {', '.join(updates)} WHERE customer_id = ? AND status = 'active'",
         params)
 
     audit(conn, SKILL, "prop-portal-update-contact-info", "customer",

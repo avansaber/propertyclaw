@@ -158,6 +158,9 @@ def create_propertyclaw_tables(db_path):
             move_in_date    TEXT,
             move_out_date   TEXT,
             recurring_template_id TEXT REFERENCES recurring_invoice_template(id) ON DELETE RESTRICT,
+            primary_contact TEXT,
+            primary_address TEXT,
+            name            TEXT,
             status          TEXT NOT NULL DEFAULT 'draft'
                             CHECK(status IN ('draft','active','expired','terminated','renewed')),
             created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
