@@ -37,6 +37,8 @@ from leases import ACTIONS as LEASE_ACTIONS
 from tenants import ACTIONS as TENANT_ACTIONS
 from maintenance import ACTIONS as MAINT_ACTIONS
 from accounting import ACTIONS as ACCT_ACTIONS
+from rent_payment import ACTIONS as RENT_PAYMENT_ACTIONS
+from portal import ACTIONS as PORTAL_ACTIONS
 
 # Register propertyclaw naming prefixes (vertical-specific entity types)
 from erpclaw_lib.naming import register_prefix
@@ -60,11 +62,14 @@ ACTIONS.update(LEASE_ACTIONS)
 ACTIONS.update(TENANT_ACTIONS)
 ACTIONS.update(MAINT_ACTIONS)
 ACTIONS.update(ACCT_ACTIONS)
+ACTIONS.update(RENT_PAYMENT_ACTIONS)
+ACTIONS.update(PORTAL_ACTIONS)
 ACTIONS["status"] = lambda conn, args: ok({
     "skill": SKILL,
-    "version": "1.0.0",
+    "version": "1.1.0",
     "actions_available": len([k for k in ACTIONS if k != "status"]),
-    "domains": ["properties", "leases", "tenants", "maintenance", "accounting"],
+    "domains": ["properties", "leases", "tenants", "maintenance", "accounting",
+                "rent_payment", "portal"],
     "database": DEFAULT_DB_PATH,
 })
 
@@ -209,6 +214,13 @@ def main():
     parser.add_argument("--tax-year")
     parser.add_argument("--interest-rate")
     parser.add_argument("--notes")
+
+    # -- Rent Payment --
+    parser.add_argument("--method-type")
+    parser.add_argument("--last-four")
+    parser.add_argument("--external-token")
+    parser.add_argument("--payment-method-id")
+    parser.add_argument("--autopay-day")
 
     # -- Shared --
     parser.add_argument("--search")

@@ -572,6 +572,34 @@ def create_propertyclaw_tables(db_path):
             ON propertyclaw_tax_1099(supplier_id);
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_1099_year
             ON propertyclaw_tax_1099(tax_year);
+
+
+        -- ==========================================================
+        -- propertyclaw-rent-payment (1 table)
+        -- ==========================================================
+
+        -- Payment method for online rent payments
+        CREATE TABLE IF NOT EXISTS propertyclaw_payment_method (
+            id              TEXT PRIMARY KEY,
+            tenant_id       TEXT NOT NULL,
+            method_type     TEXT NOT NULL CHECK (method_type IN ('ach','credit_card','debit_card')),
+            last_four       TEXT,
+            bank_name       TEXT,
+            is_default      INTEGER DEFAULT 0,
+            autopay_enabled INTEGER DEFAULT 0,
+            autopay_day     INTEGER,
+            external_token  TEXT,
+            status          TEXT DEFAULT 'active' CHECK (status IN ('active','inactive','expired')),
+            company_id      TEXT NOT NULL,
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_pm_tenant
+            ON propertyclaw_payment_method(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_pm_company
+            ON propertyclaw_payment_method(company_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_pm_status
+            ON propertyclaw_payment_method(status);
     """)
 
     # Insert naming series for each company
