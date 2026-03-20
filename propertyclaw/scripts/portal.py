@@ -290,7 +290,7 @@ def portal_update_contact_info(conn, args):
         err("No contact fields to update (use --applicant-email, --applicant-phone, or --name)")
 
     # Update tenant contact on the lease record (not core customer table — Art 5)
-    params.append(tenant_id)
+    params.append(args.customer_id)
     conn.execute(
         f"UPDATE propertyclaw_lease SET {', '.join(updates)} WHERE tenant_id = ? AND status = 'active'",
         params)
