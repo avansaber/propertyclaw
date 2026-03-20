@@ -600,6 +600,114 @@ def create_propertyclaw_tables(db_path):
             ON propertyclaw_payment_method(company_id);
         CREATE INDEX IF NOT EXISTS idx_propertyclaw_pm_status
             ON propertyclaw_payment_method(status);
+
+
+        -- ==========================================================
+        -- propertyclaw-vacancy (1 table)
+        -- ==========================================================
+
+        CREATE TABLE IF NOT EXISTS propertyclaw_listing (
+            id              TEXT PRIMARY KEY,
+            unit_id         TEXT NOT NULL REFERENCES propertyclaw_unit(id) ON DELETE RESTRICT,
+            listing_title   TEXT,
+            description     TEXT,
+            asking_rent     TEXT,
+            available_date  TEXT,
+            photos          TEXT,
+            amenities       TEXT,
+            syndicated_to   TEXT,
+            listing_url     TEXT,
+            lead_count      INTEGER DEFAULT 0,
+            status          TEXT DEFAULT 'active'
+                            CHECK(status IN ('draft','active','rented','expired')),
+            company_id      TEXT NOT NULL REFERENCES company(id) ON DELETE RESTRICT,
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_listing_unit
+            ON propertyclaw_listing(unit_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_listing_company
+            ON propertyclaw_listing(company_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_listing_status
+            ON propertyclaw_listing(status);
+
+
+        -- ==========================================================
+        -- propertyclaw-reconciliation (1 table)
+        -- ==========================================================
+
+        CREATE TABLE IF NOT EXISTS propertyclaw_trust_reconciliation (
+            id                  TEXT PRIMARY KEY,
+            trust_account_id    TEXT NOT NULL REFERENCES propertyclaw_trust_account(id) ON DELETE RESTRICT,
+            reconciliation_date TEXT NOT NULL,
+            bank_balance        TEXT NOT NULL,
+            book_balance        TEXT NOT NULL,
+            difference          TEXT DEFAULT '0',
+            adjustments         TEXT,
+            reconciled_by       TEXT,
+            notes               TEXT,
+            status              TEXT DEFAULT 'draft'
+                                CHECK(status IN ('draft','reconciled','approved')),
+            company_id          TEXT NOT NULL REFERENCES company(id) ON DELETE RESTRICT,
+            created_at          TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_recon_trust
+            ON propertyclaw_trust_reconciliation(trust_account_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_recon_company
+            ON propertyclaw_trust_reconciliation(company_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_recon_date
+            ON propertyclaw_trust_reconciliation(reconciliation_date);
+
+
+        -- ==========================================================
+        -- propertyclaw-announcement (1 table)
+        -- ==========================================================
+
+        CREATE TABLE IF NOT EXISTS propertyclaw_announcement (
+            id              TEXT PRIMARY KEY,
+            property_id     TEXT,
+            subject         TEXT NOT NULL,
+            message         TEXT NOT NULL,
+            audience        TEXT DEFAULT 'all'
+                            CHECK(audience IN ('all','tenants','owners','staff')),
+            sent_at         TEXT,
+            sent_by         TEXT,
+            status          TEXT DEFAULT 'draft'
+                            CHECK(status IN ('draft','sent','archived')),
+            company_id      TEXT NOT NULL REFERENCES company(id) ON DELETE RESTRICT,
+            created_at      TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_announce_company
+            ON propertyclaw_announcement(company_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_announce_status
+            ON propertyclaw_announcement(status);
+
+
+        -- ==========================================================
+        -- propertyclaw-vendor-bid (1 table)
+        -- ==========================================================
+
+        CREATE TABLE IF NOT EXISTS propertyclaw_vendor_bid (
+            id              TEXT PRIMARY KEY,
+            work_order_id   TEXT NOT NULL REFERENCES propertyclaw_work_order(id) ON DELETE RESTRICT,
+            vendor_id       TEXT NOT NULL,
+            bid_amount      TEXT NOT NULL DEFAULT '0',
+            estimated_duration TEXT,
+            description     TEXT,
+            submitted_date  TEXT,
+            status          TEXT DEFAULT 'submitted'
+                            CHECK(status IN ('submitted','accepted','rejected','expired')),
+            company_id      TEXT NOT NULL REFERENCES company(id) ON DELETE RESTRICT,
+            created_at      TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_bid_wo
+            ON propertyclaw_vendor_bid(work_order_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_bid_vendor
+            ON propertyclaw_vendor_bid(vendor_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_bid_company
+            ON propertyclaw_vendor_bid(company_id);
+        CREATE INDEX IF NOT EXISTS idx_propertyclaw_bid_status
+            ON propertyclaw_vendor_bid(status);
     """)
 
     # Insert naming series for each company

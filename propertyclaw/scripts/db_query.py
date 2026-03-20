@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """propertyclaw — db_query.py (unified router)
 
-AI-native property management for US landlords. Routes all 66 actions
-across 5 domain modules: properties, leases, tenants, maintenance, accounting.
+AI-native property management for US landlords. Routes all 88 actions
+across 8 domain modules: properties, leases, tenants, maintenance, accounting,
+rent_payment, portal, vacancy.
 
 Usage: python3 db_query.py --action <action-name> [--flags ...]
 Output: JSON to stdout, exit 0 on success, exit 1 on error.
@@ -39,6 +40,7 @@ from maintenance import ACTIONS as MAINT_ACTIONS
 from accounting import ACTIONS as ACCT_ACTIONS
 from rent_payment import ACTIONS as RENT_PAYMENT_ACTIONS
 from portal import ACTIONS as PORTAL_ACTIONS
+from vacancy import ACTIONS as VACANCY_ACTIONS
 
 # Register propertyclaw naming prefixes (vertical-specific entity types)
 from erpclaw_lib.naming import register_prefix
@@ -64,6 +66,7 @@ ACTIONS.update(MAINT_ACTIONS)
 ACTIONS.update(ACCT_ACTIONS)
 ACTIONS.update(RENT_PAYMENT_ACTIONS)
 ACTIONS.update(PORTAL_ACTIONS)
+ACTIONS.update(VACANCY_ACTIONS)
 ACTIONS["status"] = lambda conn, args: ok({
     "skill": SKILL,
     "version": "1.1.0",
@@ -221,6 +224,43 @@ def main():
     parser.add_argument("--external-token")
     parser.add_argument("--payment-method-id")
     parser.add_argument("--autopay-day")
+
+    # -- Vacancy Listing --
+    parser.add_argument("--listing-id")
+    parser.add_argument("--listing-title")
+    parser.add_argument("--listing-status")
+    parser.add_argument("--asking-rent")
+    parser.add_argument("--available-date")
+    parser.add_argument("--photos")
+    parser.add_argument("--amenities")
+    parser.add_argument("--syndicated-to")
+    parser.add_argument("--listing-url")
+
+    # -- Utility/RUBS --
+    parser.add_argument("--charge-amount", dest="rubs_amount")
+
+    # -- Trust Reconciliation --
+    parser.add_argument("--reconciliation-id")
+    parser.add_argument("--reconciliation-date")
+    parser.add_argument("--bank-balance")
+    parser.add_argument("--book-balance")
+    parser.add_argument("--adjustments")
+    parser.add_argument("--reconciled-by")
+
+    # -- Announcement --
+    parser.add_argument("--announcement-id")
+    parser.add_argument("--announcement-status")
+    parser.add_argument("--subject")
+    parser.add_argument("--message")
+    parser.add_argument("--audience")
+    parser.add_argument("--sent-by")
+
+    # -- Vendor Bidding --
+    parser.add_argument("--bid-id")
+    parser.add_argument("--vendor-id")
+    parser.add_argument("--bid-amount")
+    parser.add_argument("--estimated-duration")
+    parser.add_argument("--submitted-date")
 
     # -- Shared --
     parser.add_argument("--search")
