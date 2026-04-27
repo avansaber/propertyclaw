@@ -39,6 +39,7 @@ for commercial properties.
 - `commercial-add-expense-passthrough` -- Add an expense passthrough to a lease
 - `commercial-list-expense-passthroughs` -- List expense passthroughs for a lease
 - `commercial-add-cam-pool` -- Create a CAM pool for a property/year
+- `commercial-get-cam-pool` -- Get CAM pool details with expenses
 - `commercial-list-cam-pools` -- List CAM pools (filterable by year/status)
 - `commercial-add-cam-expense` -- Add an expense to a CAM pool
 - `commercial-list-cam-expenses` -- List expenses in a CAM pool

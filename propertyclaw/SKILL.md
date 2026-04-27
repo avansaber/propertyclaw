@@ -1,7 +1,7 @@
 ---
 name: propertyclaw
 version: 1.0.0
-description: AI-native property management for US landlords (20-500 units). 66 actions across 5 domains -- properties, leases, tenants, maintenance, trust accounting. Built on ERPClaw foundation with real double-entry GL, FCRA-compliant screening, state-specific late fees, and 1099 reporting.
+description: AI-native property management for US landlords. 102 actions across 8 domains -- properties, units, leases, tenants, maintenance, trust accounting, vacancy/listings, and tenant portal. FCRA-compliant screening, state-specific late fees, 1099 reporting.
 author: AvanSaber
 homepage: https://github.com/avansaber/propertyclaw
 source: https://github.com/avansaber/propertyclaw
@@ -10,7 +10,7 @@ category: property-management
 requires: [erpclaw]
 database: ~/.openclaw/erpclaw/data.sqlite
 user-invocable: true
-tags: [propertyclaw, property-management, real-estate, landlord, leasing, tenant, rent, maintenance, work-order, trust-accounting, security-deposit, 1099, fcra, inspection]
+tags: [propertyclaw, property-management, real-estate, landlord, leasing, tenant, rent, maintenance, work-order, trust-accounting, security-deposit, 1099, fcra, inspection, vacancy, listing, portal, vendor, rubs, utility]
 scripts:
   - scripts/db_query.py
 metadata: {"openclaw":{"type":"executable","install":{"post":"python3 init_db.py && python3 scripts/db_query.py --action status"},"requires":{"bins":["python3"],"env":[],"optionalEnv":["ERPCLAW_DB_PATH"]},"os":["darwin","linux"]}}
@@ -18,190 +18,175 @@ metadata: {"openclaw":{"type":"executable","install":{"post":"python3 init_db.py
 
 # propertyclaw
 
-You are a Property Manager for PropertyClaw, an AI-native property management system built on ERPClaw.
-You manage the full landlord workflow: properties, units, tenant applications, leases, rent collection,
-maintenance work orders, inspections, trust accounting, security deposits, and tax reporting.
-Tenants are ERPClaw customers. Vendors are ERPClaw suppliers. Rent invoices are ERPClaw sales invoices.
-All financial transactions post to the ERPClaw General Ledger with full double-entry accounting.
-
-## Security Model
-
-- **Local-only**: All data stored in `~/.openclaw/erpclaw/data.sqlite`
-- **Fully offline**: No external API calls, no telemetry, no cloud dependencies
-- **No credentials required**: Uses erpclaw_lib shared library (installed by erpclaw)
-- **SQL injection safe**: All queries use parameterized statements
-- **FCRA compliance tracking**: Stores screening metadata (type, consent date, result) locally for audit trails. Does NOT contact credit reporting agencies -- the landlord performs external screening separately and records the outcome here. Fields like `cra_name` and `cra_phone` are landlord-entered text for adverse action notices, not API endpoints.
-- **URL fields are text storage only**: Fields like `file_url`, `photo_url`, `invoice_url` store user-provided URL strings in the database. The skill never fetches, downloads, or opens these URLs -- they are metadata for the landlord's reference.
-- **Immutable audit trail**: GL entries are never modified -- cancellations create reversals
+Property Manager for PropertyClaw -- AI-native property management on ERPClaw.
+Manages properties, units, amenities, tenant applications, FCRA screening, leases, rent collection,
+late fees, renewals, maintenance work orders, inspections, vendor management, trust accounting,
+security deposits, owner statements, 1099 reporting, vacancy listings, RUBS utility billing,
+and tenant self-service portal. All financials post to ERPClaw GL.
 
 ### Skill Activation Triggers
 
-Activate this skill when the user mentions: property, unit, apartment, tenant, lease, rent,
-application, screening, work order, maintenance, inspection, trust account, security deposit,
-owner statement, 1099, landlord, property management, move-in, move-out, late fee, renewal.
+Activate when user mentions: property, unit, apartment, tenant, lease, rent, application,
+screening, work order, maintenance, inspection, trust account, security deposit, owner statement,
+1099, landlord, property management, move-in, move-out, late fee, renewal, listing, vacancy,
+vendor, RUBS, utility billing, autopay, amenity.
 
-### Setup (First Use Only)
-
-If the database does not exist or you see "no such table" errors:
+### Setup
 ```
 python3 {baseDir}/../erpclaw/scripts/db_query.py --action initialize-database
 python3 {baseDir}/scripts/db_query.py --action status
 ```
 
-## Quick Start (Tier 1)
-
-**1. Add a property and units:**
+## Quick Start
 ```
---action prop-add-property --company-id {id} --name "Elm Street Apts" --address-line1 "100 Elm St" --city "Austin" --state "TX" --zip-code "78701" --total-units 12
---action prop-add-unit --property-id {id} --unit-number "101" --bedrooms 2 --bathrooms "1" --market-rent "1500.00"
-```
-
-**2. Screen and onboard a tenant:**
-```
---action prop-add-application --company-id {id} --property-id {id} --applicant-name "Jane Doe" --applicant-email "jane@example.com"
+--action prop-add-property --company-id {id} --name "Elm Street Apts" --address-line1 "100 Elm St" --city "Austin" --state "TX" --zip-code "78701"
+--action prop-add-unit --property-id {id} --unit-number "101" --bedrooms 2 --market-rent "1500.00"
+--action prop-add-application --company-id {id} --property-id {id} --applicant-name "Jane Doe"
 --action prop-add-screening --application-id {id} --screening-type credit --consent-obtained 1
 --action prop-approve-application --application-id {id}
-```
-
-**3. Create and activate a lease:**
-```
 --action prop-add-lease --company-id {id} --property-id {id} --unit-id {id} --customer-id {id} --start-date 2026-04-01 --monthly-rent "1500.00"
 --action prop-activate-lease --lease-id {id}
 ```
 
-**4. Handle maintenance:**
-```
---action prop-add-work-order --company-id {id} --property-id {id} --description "Leaking faucet" --reported-date 2026-04-15
---action prop-assign-vendor --work-order-id {id} --supplier-id {id}
---action prop-complete-work-order --work-order-id {id} --actual-cost "250.00"
-```
+## All 102 Actions
 
-## All Actions (Tier 2)
-
-For all actions: `python3 {baseDir}/scripts/db_query.py --action <action> [flags]`
-
-### Properties (14 actions)
-| Action | Required Flags | Optional Flags |
-|--------|---------------|----------------|
-| `prop-add-property` | `--name --company-id --address-line1 --city --state --zip-code` | `--property-type --year-built --total-units --owner-name --management-fee-pct` |
-| `prop-update-property` | `--property-id` | `--name --property-status --owner-name --management-fee-pct --address-line1 --city --state` |
-| `prop-get-property` | `--property-id` | |
-| `prop-list-properties` | `--company-id` | `--property-status --state --search --limit --offset` |
-| `prop-add-unit` | `--property-id --unit-number` | `--unit-type --bedrooms --bathrooms --sq-ft --market-rent` |
-| `prop-update-unit` | `--unit-id` | `--unit-status --market-rent --unit-type --bedrooms` |
-| `prop-get-unit` | `--unit-id` | |
-| `prop-list-units` | `--property-id` | `--unit-status --search --limit --offset` |
-| `prop-add-amenity` | `--amenity-name` | `--property-id --unit-id --description` |
-| `prop-list-amenities` | | `--property-id --unit-id` |
-| `prop-delete-amenity` | `--amenity-id` | |
-| `prop-add-photo` | `--file-url` | `--property-id --unit-id --description --photo-scope` |
-| `prop-list-photos` | | `--property-id --unit-id` |
-| `prop-delete-photo` | `--photo-id` | |
+### Properties & Units (14 actions)
+| Action | Description |
+|--------|-------------|
+| `prop-add-property` | Add rental property |
+| `prop-update-property` | Update property details |
+| `prop-get-property` | Get property with units |
+| `prop-list-properties` | List properties |
+| `prop-add-unit` | Add unit to property |
+| `prop-update-unit` | Update unit details |
+| `prop-get-unit` | Get unit details |
+| `prop-list-units` | List units by property |
+| `prop-add-amenity` | Add property/unit amenity |
+| `prop-list-amenities` | List amenities |
+| `prop-delete-amenity` | Delete amenity |
+| `prop-add-photo` | Add property/unit photo |
+| `prop-list-photos` | List photos |
+| `prop-delete-photo` | Delete photo |
 
 ### Leases (16 actions)
-| Action | Required Flags | Optional Flags |
-|--------|---------------|----------------|
-| `prop-add-lease` | `--company-id --property-id --unit-id --customer-id --start-date --monthly-rent` | `--lease-type --end-date --security-deposit-amount` |
-| `prop-update-lease` | `--lease-id` | `--monthly-rent --end-date --lease-status` |
-| `prop-get-lease` | `--lease-id` | |
-| `prop-list-leases` | `--company-id` | `--property-id --lease-status --customer-id --limit --offset` |
-| `prop-activate-lease` | `--lease-id` | |
-| `prop-terminate-lease` | `--lease-id --move-out-date` | `--notes` |
-| `prop-add-rent-schedule` | `--lease-id --charge-type --amount` | `--description --frequency --start-date --end-date` |
-| `prop-list-rent-schedules` | `--lease-id` | |
-| `prop-delete-rent-schedule` | `--rent-schedule-id` | |
-| `prop-generate-charges` | `--lease-id --charge-date` | |
-| `prop-list-charges` | `--lease-id` | `--charge-status --limit --offset` |
-| `prop-add-late-fee-rule` | `--company-id --state --fee-type` | `--flat-amount --percentage-rate --grace-days --max-cap` |
-| `prop-list-late-fee-rules` | `--company-id` | `--state` |
-| `prop-apply-late-fees` | `--company-id --as-of-date` | |
-| `prop-propose-renewal` | `--lease-id --new-start-date --new-monthly-rent` | `--new-end-date --rent-increase-pct` |
-| `prop-accept-renewal` | `--renewal-id` | |
+| Action | Description |
+|--------|-------------|
+| `prop-add-lease` | Create lease |
+| `prop-update-lease` | Update lease |
+| `prop-get-lease` | Get lease details |
+| `prop-list-leases` | List leases |
+| `prop-activate-lease` | Activate lease |
+| `prop-terminate-lease` | Terminate lease |
+| `prop-add-rent-schedule` | Add rent charge schedule |
+| `prop-list-rent-schedules` | List rent schedules |
+| `prop-delete-rent-schedule` | Delete rent schedule |
+| `prop-generate-charges` | Generate monthly charges |
+| `prop-list-charges` | List lease charges |
+| `prop-add-late-fee-rule` | Add state-specific late fee rule |
+| `prop-list-late-fee-rules` | List late fee rules |
+| `prop-apply-late-fees` | Apply late fees |
+| `prop-propose-renewal` | Propose lease renewal |
+| `prop-accept-renewal` | Accept renewal |
 
-### Tenants (12 actions)
-| Action | Required Flags | Optional Flags |
-|--------|---------------|----------------|
-| `prop-add-application` | `--company-id --property-id --applicant-name` | `--unit-id --applicant-email --applicant-phone --desired-move-in --monthly-income --employer` |
-| `prop-update-application` | `--application-id` | `--application-status --notes` |
-| `prop-get-application` | `--application-id` | |
-| `prop-list-applications` | `--company-id` | `--property-id --application-status --limit --offset` |
-| `prop-approve-application` | `--application-id` | |
-| `prop-deny-application` | `--application-id --denial-reason --cra-name` | `--cra-phone --delivery-method` |
-| `prop-add-screening` | `--application-id --screening-type` | `--consent-obtained --notes` |
-| `prop-get-screening` | `--screening-id` | |
-| `prop-list-screenings` | `--application-id` | |
-| `prop-add-document` | `--customer-id --document-type --file-url` | `--lease-id --description --expiry-date` |
-| `prop-list-documents` | `--customer-id` | `--lease-id --document-type --limit --offset` |
-| `prop-delete-document` | `--document-id` | |
+### Tenants & Applications (12 actions)
+| Action | Description |
+|--------|-------------|
+| `prop-add-application` | Create tenant application |
+| `prop-update-application` | Update application |
+| `prop-get-application` | Get application details |
+| `prop-list-applications` | List applications |
+| `prop-approve-application` | Approve application |
+| `prop-deny-application` | Deny with FCRA notice |
+| `prop-add-screening` | Add screening request |
+| `prop-get-screening` | Get screening result |
+| `prop-list-screenings` | List screenings |
+| `prop-add-document` | Add tenant document |
+| `prop-list-documents` | List documents |
+| `prop-delete-document` | Delete document |
 
-### Maintenance (14 actions)
-| Action | Required Flags | Optional Flags |
-|--------|---------------|----------------|
-| `prop-add-work-order` | `--company-id --property-id --description --reported-date` | `--unit-id --customer-id --category --priority --permission-to-enter` |
-| `prop-update-work-order` | `--work-order-id` | `--wo-status --scheduled-date --estimated-cost` |
-| `prop-get-work-order` | `--work-order-id` | |
-| `prop-list-work-orders` | `--company-id` | `--property-id --wo-status --priority --limit --offset` |
-| `prop-assign-vendor` | `--work-order-id --supplier-id` | `--estimated-arrival` |
-| `prop-update-vendor-assignment` | `--assignment-id` | `--va-status --actual-arrival` |
-| `prop-complete-work-order` | `--work-order-id --actual-cost` | `--purchase-invoice-id --billable-to-tenant` |
-| `prop-add-work-order-item` | `--work-order-id --item-description --item-type --rate` | `--quantity` |
-| `prop-list-work-order-items` | `--work-order-id` | |
-| `prop-add-inspection` | `--company-id --property-id --inspection-type --inspection-date` | `--unit-id --lease-id --inspector-name` |
-| `prop-get-inspection` | `--inspection-id` | |
-| `prop-list-inspections` | `--company-id` | `--property-id --inspection-type --limit --offset` |
-| `prop-add-inspection-item` | `--inspection-id --area --item --condition` | `--description --photo-url --estimated-repair-cost` |
-| `prop-list-inspection-items` | `--inspection-id` | |
+### Maintenance & Inspections (14 actions)
+| Action | Description |
+|--------|-------------|
+| `prop-add-work-order` | Create work order |
+| `prop-update-work-order` | Update work order |
+| `prop-get-work-order` | Get work order details |
+| `prop-list-work-orders` | List work orders |
+| `prop-assign-vendor` | Assign vendor to work order |
+| `prop-update-vendor-assignment` | Update vendor assignment |
+| `prop-complete-work-order` | Complete work order |
+| `prop-add-work-order-item` | Add work order line item |
+| `prop-list-work-order-items` | List work order items |
+| `prop-add-inspection` | Schedule inspection |
+| `prop-get-inspection` | Get inspection details |
+| `prop-list-inspections` | List inspections |
+| `prop-add-inspection-item` | Add inspection checklist item |
+| `prop-list-inspection-items` | List inspection items |
 
-### Accounting (10 actions)
-| Action | Required Flags | Optional Flags |
-|--------|---------------|----------------|
-| `prop-setup-trust-account` | `--company-id --property-id --account-id` | `--bank-name` |
-| `prop-get-trust-account` | `--trust-account-id` | |
-| `prop-list-trust-accounts` | `--company-id` | `--property-id` |
-| `prop-generate-owner-statement` | `--company-id --property-id --period-start --period-end` | |
-| `prop-list-owner-statements` | `--company-id` | `--property-id --limit --offset` |
-| `prop-record-security-deposit` | `--lease-id --amount --deposit-date` | `--trust-account-id-ref --interest-rate` |
-| `prop-return-security-deposit` | `--security-deposit-id --return-amount` | |
-| `prop-add-deposit-deduction` | `--security-deposit-id --deduction-type --deduction-description --amount` | `--invoice-url --receipt-url` |
-| `prop-list-deposit-deductions` | `--security-deposit-id` | |
-| `prop-generate-1099-report` | `--company-id --tax-year` | `--supplier-id` |
+### Accounting & Trust (13 actions)
+| Action | Description |
+|--------|-------------|
+| `prop-setup-trust-account` | Set up trust account |
+| `prop-get-trust-account` | Get trust account |
+| `prop-list-trust-accounts` | List trust accounts |
+| `prop-reconcile-trust-account` | Reconcile trust account |
+| `prop-add-trust-reconciliation` | Add reconciliation record |
+| `prop-list-trust-reconciliations` | List reconciliations |
+| `prop-trust-reconciliation-report` | Trust reconciliation report |
+| `prop-generate-owner-statement` | Generate owner statement |
+| `prop-list-owner-statements` | List owner statements |
+| `prop-record-security-deposit` | Record security deposit |
+| `prop-return-security-deposit` | Return security deposit |
+| `prop-add-deposit-deduction` | Add deposit deduction |
+| `prop-list-deposit-deductions` | List deposit deductions |
 
-### Quick Command Reference
-| User Says | Action |
-|-----------|--------|
-| "Add a new property" | `prop-add-property` |
-| "Show all my properties" | `prop-list-properties` |
-| "Add a unit to the building" | `prop-add-unit` |
-| "New tenant application" | `prop-add-application` |
-| "Run a background check" | `prop-add-screening` |
-| "Approve the applicant" | `prop-approve-application` |
-| "Create a lease" | `prop-add-lease` |
-| "Activate the lease" | `prop-activate-lease` |
-| "Generate rent charges" | `prop-generate-charges` |
-| "Apply late fees" | `prop-apply-late-fees` |
-| "Submit a maintenance request" | `prop-add-work-order` |
-| "Assign a plumber" | `prop-assign-vendor` |
-| "Set up trust account" | `prop-setup-trust-account` |
-| "Record security deposit" | `prop-record-security-deposit` |
-| "Return the deposit" | `prop-return-security-deposit` |
-| "Generate owner statement" | `prop-generate-owner-statement` |
-| "1099 report for vendors" | `prop-generate-1099-report` |
+### Rent & Payments (5 actions)
+| Action | Description |
+|--------|-------------|
+| `prop-process-rent-payment` | Process rent payment |
+| `prop-add-payment-method` | Add payment method |
+| `prop-list-payment-methods` | List payment methods |
+| `prop-enable-autopay` | Enable autopay |
+| `prop-disable-autopay` | Disable autopay |
 
-### Key Concepts
+### Vacancy & Listings (10 actions)
+| Action | Description |
+|--------|-------------|
+| `prop-create-listing` | Create vacancy listing |
+| `prop-update-listing` | Update listing |
+| `prop-list-listings` | List active listings |
+| `prop-list-vacancies` | List vacant units |
+| `prop-request-vendor-bid` | Request vendor bid |
+| `prop-accept-vendor-bid` | Accept vendor bid |
+| `prop-list-vendor-bids` | List vendor bids |
+| `prop-send-announcement` | Send property announcement |
+| `prop-add-announcement` | Create announcement |
+| `prop-list-announcements` | List announcements |
 
-- **Tenant = Customer**: Tenants are ERPClaw customers. Use the selling domain in erpclaw for invoicing.
-- **Vendor = Supplier**: Maintenance vendors are ERPClaw suppliers. Use the buying domain in erpclaw for POs.
-- **Trust Accounts**: GL accounts with `account_type = 'trust'`. Security deposits held here.
-- **FCRA Compliance**: Never store raw credit data. Adverse action notice required on denial.
-- **State-Specific Late Fees**: Rules vary by state (grace days, flat vs percentage, caps).
-- **Security Deposit Deadlines**: Auto-calculated by state (14-60 days after move-out).
+### Tenant Portal (8 actions)
+| Action | Description |
+|--------|-------------|
+| `prop-portal-my-lease` | View lease details |
+| `prop-portal-my-charges` | View charges |
+| `prop-portal-my-payments` | View payment history |
+| `prop-portal-my-documents` | View documents |
+| `prop-portal-announcements` | View announcements |
+| `prop-portal-submit-maintenance-request` | Submit maintenance request |
+| `prop-portal-list-maintenance-requests` | List maintenance requests |
+| `prop-portal-update-contact-info` | Update contact info |
+
+### Reports (10 actions)
+| Action | Description |
+|--------|-------------|
+| `prop-generate-1099-report` | Generate 1099 for vendors |
+| `prop-listing-performance-report` | Listing performance |
+| `prop-vendor-performance-report` | Vendor performance |
+| `prop-utility-cost-report` | Utility cost report |
+| `prop-generate-lease-document` | Generate lease document |
+| `prop-list-lease-documents` | List lease documents |
+| `prop-generate-payment-receipt` | Generate payment receipt |
+| `prop-generate-utility-charges` | Generate utility charges |
+| `prop-list-utility-charges` | List utility charges |
+| `prop-calculate-rubs` | Calculate RUBS allocations |
 
 ## Technical Details (Tier 3)
-
-**Tables owned (23):** propertyclaw_property, propertyclaw_unit, propertyclaw_amenity, propertyclaw_property_photo, propertyclaw_lease, propertyclaw_rent_schedule, propertyclaw_lease_charge, propertyclaw_late_fee_rule, propertyclaw_lease_renewal, propertyclaw_application, propertyclaw_screening_request, propertyclaw_tenant_document, propertyclaw_adverse_action, propertyclaw_work_order, propertyclaw_work_order_item, propertyclaw_inspection, propertyclaw_inspection_item, propertyclaw_vendor_assignment, propertyclaw_trust_account, propertyclaw_owner_statement, propertyclaw_security_deposit, propertyclaw_deposit_deduction, propertyclaw_tax_1099
-
-**Script:** `scripts/db_query.py` -- all 66 actions routed through this single entry point.
-
-**Data conventions:** Money = TEXT (Python Decimal), IDs = TEXT (UUID4), Dates = TEXT (ISO 8601), Booleans = INTEGER (0/1)
-
-**Shared library:** Uses erpclaw_lib shared library (installed by erpclaw).
+**Tables (23):** All use `propertyclaw_` prefix. **Script:** `scripts/db_query.py` routes to 8 modules. **Data:** Money=TEXT(Decimal), IDs=TEXT(UUID4). **FCRA:** No raw credit data stored. **Late fees:** State-specific rules.
