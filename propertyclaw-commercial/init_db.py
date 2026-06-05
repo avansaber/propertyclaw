@@ -85,37 +85,10 @@ def create_commercial_tables(db_path=None):
     indexes_created += 3
 
     # -----------------------------------------------------------------------
-    # 2. commercial_nnn_charge — NNN expense passthroughs
+    # commercial_nnn_charge removed 2026-06-01 (audit P2): dead scaffolding (zero
+    # code/doc references); commercial_nnn_lease kept. Dropped from existing DBs by
+    # this module's migration 001.
     # -----------------------------------------------------------------------
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS commercial_nnn_charge (
-            id                TEXT PRIMARY KEY,
-            lease_id          TEXT NOT NULL,
-            expense_type      TEXT NOT NULL
-                CHECK(expense_type IN ('cam', 'insurance', 'property_tax', 'other')),
-            expense_period    TEXT NOT NULL,
-            actual_amount     TEXT NOT NULL DEFAULT '0',
-            estimated_amount  TEXT NOT NULL DEFAULT '0',
-            tenant_share      TEXT NOT NULL DEFAULT '0',
-            description       TEXT,
-            company_id        TEXT NOT NULL,
-            created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at        TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (lease_id) REFERENCES commercial_nnn_lease(id) ON DELETE RESTRICT,
-            FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE RESTRICT
-        )
-    """)
-    tables_created += 1
-
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_commercial_nnn_charge_lease
-        ON commercial_nnn_charge(lease_id)
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_commercial_nnn_charge_period
-        ON commercial_nnn_charge(expense_period)
-    """)
-    indexes_created += 2
 
     # -----------------------------------------------------------------------
     # 3. commercial_expense_passthrough — NNN expense passthroughs per lease
