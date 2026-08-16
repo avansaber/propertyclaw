@@ -6,6 +6,8 @@ work orders, vendor assignments, inspections, accounting (trust, deposits, 1099)
 """
 import os
 import sys
+import uuid
+from decimal import Decimal
 
 _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _TESTS_DIR not in sys.path:
@@ -764,3 +766,115 @@ class TestAccounting:
             company_id=env["company_id"], tax_year="2025"))
         assert is_ok(r)
         assert r["tax_year"] == 2025
+
+
+class TestF19bDepositGL:
+    """F19b: security deposits now post balanced GL through the foundation
+    helper. Exact Decimals; a received/deducted/returned deposit nets the
+    liability to zero; the 'forfeited' status transition is reachable; and the
+    GL invariant checker is green after the postings."""
+
+    def _accounts(self, conn, env):
+        cash = seed_account(conn, env["company_id"], "Cash", "asset", "cash", "1000")
+        liab = seed_account(conn, env["company_id"], "Security Deposit Liability",
+                            "liability", None, "2300")
+        income = seed_account(conn, env["company_id"], "Other Income",
+                              "income", None, "4900")
+        cc = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO cost_center (id, name, company_id, is_group) VALUES (?,?,?,0)",
+            (cc, "Main", env["company_id"]))
+        conn.commit()
+        return cash, liab, income, cc
+
+    def _lease(self, conn, env, tag):
+        r = call_action(ACTIONS["prop-add-property"], conn, ns(
+            company_id=env["company_id"], name=f"GL Prop {tag}",
+            address_line1="1 GL Rd", city="Austin", state="TX", zip_code="78701"))
+        pid = r["property_id"]
+        uid = call_action(ACTIONS["prop-add-unit"], conn, ns(
+            property_id=pid, unit_number=f"G{tag}"))["unit_id"]
+        return call_action(ACTIONS["prop-add-lease"], conn, ns(
+            company_id=env["company_id"], property_id=pid, unit_id=uid,
+            customer_id=env["customer"], start_date="2026-01-01",
+            monthly_rent="1500"))["lease_id"]
+
+    def _liab_balance(self, conn, liab):
+        """Credit-normal liability net = SUM(credit) - SUM(debit)."""
+        row = conn.execute(
+            "SELECT COALESCE(SUM(credit),'0') c, COALESCE(SUM(debit),'0') d "
+            "FROM gl_entry WHERE account_id = ? AND is_cancelled = 0", (liab,)).fetchone()
+        return Decimal(str(row["c"])) - Decimal(str(row["d"]))
+
+    def test_receipt_posts_balanced_pair(self, conn, env):
+        cash, liab, income, cc = self._accounts(conn, env)
+        lid = self._lease(conn, env, "R")
+        r = call_action(ACTIONS["prop-record-security-deposit"], conn, ns(
+            lease_id=lid, amount="1500", deposit_date="2026-01-01",
+            cash_account_id=cash, deposit_liability_account_id=liab))
+        assert is_ok(r)
+        assert r["gl_entry_id"] is not None
+        # gl_entry_id wired onto the deposit row
+        row = conn.execute("SELECT gl_entry_id FROM propertyclaw_security_deposit "
+                           "WHERE id = ?", (r["security_deposit_id"],)).fetchone()
+        assert row["gl_entry_id"] == r["gl_entry_id"]
+        # exact Decimal legs: Dr cash 1500.00 / Cr liability 1500.00
+        dr = conn.execute("SELECT debit FROM gl_entry WHERE account_id = ?", (cash,)).fetchone()
+        cr = conn.execute("SELECT credit FROM gl_entry WHERE account_id = ?", (liab,)).fetchone()
+        assert Decimal(str(dr["debit"])) == Decimal("1500.00")
+        assert Decimal(str(cr["credit"])) == Decimal("1500.00")
+        assert self._liab_balance(conn, liab) == Decimal("1500.00")
+
+    def test_lifecycle_nets_liability_to_zero(self, conn, env, db_path):
+        cash, liab, income, cc = self._accounts(conn, env)
+        lid = self._lease(conn, env, "L")
+        dep = call_action(ACTIONS["prop-record-security-deposit"], conn, ns(
+            lease_id=lid, amount="1000", deposit_date="2026-01-01",
+            cash_account_id=cash, deposit_liability_account_id=liab))["security_deposit_id"]
+        call_action(ACTIONS["prop-add-deposit-deduction"], conn, ns(
+            security_deposit_id=dep, deduction_type="damages",
+            deduction_description="Wall repair", amount="300",
+            deposit_liability_account_id=liab, income_account_id=income,
+            cost_center_id=cc))
+        call_action(ACTIONS["prop-return-security-deposit"], conn, ns(
+            security_deposit_id=dep, return_amount="700",
+            cash_account_id=cash, deposit_liability_account_id=liab))
+        # 1000 Cr - 300 Dr - 700 Dr == 0
+        assert self._liab_balance(conn, liab) == Decimal("0.00")
+        # GL invariants green (per-voucher balance, valid accounts, no zero/zero)
+        from erpclaw_lib.gl_invariants import check_gl_invariants
+        result = check_gl_invariants(db_path)
+        assert result["result"] == "pass", result
+
+    def test_forfeit_sets_status_and_nets_zero(self, conn, env):
+        cash, liab, income, cc = self._accounts(conn, env)
+        lid = self._lease(conn, env, "F")
+        dep = call_action(ACTIONS["prop-record-security-deposit"], conn, ns(
+            lease_id=lid, amount="1000", deposit_date="2026-01-01",
+            cash_account_id=cash, deposit_liability_account_id=liab))["security_deposit_id"]
+        call_action(ACTIONS["prop-add-deposit-deduction"], conn, ns(
+            security_deposit_id=dep, deduction_type="unpaid_rent",
+            deduction_description="Last month", amount="200",
+            deposit_liability_account_id=liab, income_account_id=income,
+            cost_center_id=cc))
+        r = call_action(ACTIONS["prop-forfeit-security-deposit"], conn, ns(
+            security_deposit_id=dep, deposit_liability_account_id=liab,
+            income_account_id=income, cost_center_id=cc))
+        assert is_ok(r)
+        assert r["forfeited_amount"] == "800.00"
+        row = conn.execute("SELECT status FROM propertyclaw_security_deposit "
+                           "WHERE id = ?", (dep,)).fetchone()
+        assert row["status"] == "forfeited"
+        # 1000 Cr - 200 Dr (deduction) - 800 Dr (forfeit) == 0
+        assert self._liab_balance(conn, liab) == Decimal("0.00")
+
+    def test_gl_skipped_gracefully_without_accounts(self, conn, env):
+        lid = self._lease(conn, env, "S")
+        r = call_action(ACTIONS["prop-record-security-deposit"], conn, ns(
+            lease_id=lid, amount="500", deposit_date="2026-01-01"))
+        assert is_ok(r)
+        assert r["gl_entry_id"] is None
+        # deposit still recorded
+        row = conn.execute("SELECT status FROM propertyclaw_security_deposit "
+                           "WHERE id = ?", (r["security_deposit_id"],)).fetchone()
+        assert row["status"] == "held"

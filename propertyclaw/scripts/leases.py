@@ -13,7 +13,9 @@ from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 try:
-    sys.path.insert(0, os.path.join(os.path.expanduser(os.environ.get("ERPCLAW_HOME", "~/.openclaw/erpclaw")), "lib"))
+    import importlib.util
+    if importlib.util.find_spec("erpclaw_lib") is None:
+        sys.path.insert(0, os.path.join(os.path.expanduser(os.environ.get("ERPCLAW_HOME", "~/.openclaw/erpclaw")), "lib"))
     from erpclaw_lib.db import get_connection, ensure_db_exists, DEFAULT_DB_PATH
     from erpclaw_lib.decimal_utils import to_decimal, round_currency
     from erpclaw_lib.naming import get_next_name
@@ -21,7 +23,7 @@ try:
     from erpclaw_lib.response import ok, err, row_to_dict
     from erpclaw_lib.audit import audit
     from erpclaw_lib.dependencies import check_required_tables
-    from erpclaw_lib.query import Q, P, Table, Field, fn, Order, insert_row, update_row
+    from erpclaw_lib.query import Field, Order, P, Q, Table, fn, insert_row, now as sql_now, update_row
 except ImportError:
     import json as _json
     print(_json.dumps({
@@ -211,10 +213,9 @@ def activate_lease(conn, args):
     if lease["status"] != "draft":
         err(f"Lease must be in 'draft' status to activate (current: {lease['status']})")
 
-    from erpclaw_lib.query import LiteralValue
     conn.execute(
         update_row("propertyclaw_unit",
-                   data={"status": P(), "updated_at": LiteralValue("datetime('now')")},
+                   data={"status": P(), "updated_at": sql_now()},
                    where={"id": P()}),
         ("occupied", lease["unit_id"]))
 

@@ -13,7 +13,9 @@ from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 try:
-    sys.path.insert(0, os.path.join(os.path.expanduser(os.environ.get("ERPCLAW_HOME", "~/.openclaw/erpclaw")), "lib"))
+    import importlib.util
+    if importlib.util.find_spec("erpclaw_lib") is None:
+        sys.path.insert(0, os.path.join(os.path.expanduser(os.environ.get("ERPCLAW_HOME", "~/.openclaw/erpclaw")), "lib"))
     from erpclaw_lib.db import get_connection, ensure_db_exists, DEFAULT_DB_PATH
     from erpclaw_lib.decimal_utils import to_decimal, round_currency
     from erpclaw_lib.naming import get_next_name
@@ -34,6 +36,15 @@ except ImportError:
 REQUIRED_TABLES = ["company", "account", "propertyclaw_property", "propertyclaw_lease",
                    "propertyclaw_trust_account", "propertyclaw_security_deposit"]
 SKILL = "prop-propertyclaw-accounting"
+
+# F19b: security-deposit GL posting. Deposits moved money but posted no GL
+# anywhere. We post balanced pairs through the foundation helper. Guarded so a
+# foundation without gl_posting still loads the module (records without GL).
+try:
+    from erpclaw_lib.gl_posting import insert_gl_entries
+    HAS_GL = True
+except ImportError:
+    HAS_GL = False
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +246,111 @@ def list_owner_statements(conn, args):
 # ---------------------------------------------------------------------------
 # record-security-deposit
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# F19b — security-deposit GL helpers
+# ---------------------------------------------------------------------------
+def _company_of_lease(conn, lease_id):
+    row = conn.execute(
+        "SELECT company_id FROM propertyclaw_lease WHERE id = ?", (lease_id,)).fetchone()
+    return row["company_id"] if row else None
+
+
+def _account_root_type(conn, account_id):
+    row = conn.execute(
+        "SELECT root_type FROM account WHERE id = ?", (account_id,)).fetchone()
+    return row["root_type"] if row else None
+
+
+def _resolve_cash_account(conn, args, company_id, trust_account_id):
+    """Asset side. Precedence: explicit arg > trust account's GL account >
+    company default cash > company default bank."""
+    acct = getattr(args, "cash_account_id", None)
+    if not acct and trust_account_id:
+        row = conn.execute(
+            "SELECT account_id FROM propertyclaw_trust_account WHERE id = ?",
+            (trust_account_id,)).fetchone()
+        if row:
+            acct = row["account_id"]
+    if not acct:
+        row = conn.execute(
+            "SELECT default_cash_account_id, default_bank_account_id "
+            "FROM company WHERE id = ?", (company_id,)).fetchone()
+        if row:
+            acct = row["default_cash_account_id"] or row["default_bank_account_id"]
+    return acct
+
+
+def _resolve_liability_account(conn, args, company_id):
+    """Security-deposit liability side. No safe seeded default (the CoA's
+    'Security Deposits' is an ASSET — deposits *paid*), so this must be supplied.
+    Resolves --deposit-liability-account-id and validates it is a liability."""
+    acct = getattr(args, "deposit_liability_account_id", None)
+    if not acct:
+        return None
+    if _account_root_type(conn, acct) != "liability":
+        err("--deposit-liability-account-id must reference a liability account "
+            f"(account {acct} is not root_type='liability')")
+    return acct
+
+
+def _resolve_income_account(conn, args, company_id):
+    """Income side for retained/forfeited amounts. Precedence: explicit arg >
+    company default income."""
+    acct = getattr(args, "income_account_id", None)
+    if not acct:
+        row = conn.execute(
+            "SELECT default_income_account_id FROM company WHERE id = ?",
+            (company_id,)).fetchone()
+        if row:
+            acct = row["default_income_account_id"]
+    return acct
+
+
+def _resolve_cost_center(conn, args, company_id):
+    """Cost center for the income leg (GL validation requires one on P&L
+    accounts). Precedence: explicit arg > company default cost center."""
+    cc = getattr(args, "cost_center_id", None)
+    if not cc:
+        row = conn.execute(
+            "SELECT default_cost_center_id FROM company WHERE id = ?",
+            (company_id,)).fetchone()
+        if row:
+            cc = row["default_cost_center_id"]
+    return cc
+
+
+def _post_deposit_pair(conn, company_id, debit_account_id, credit_account_id,
+                       amount, voucher_id, entry_set, posting_date, remarks,
+                       cost_center_id=None):
+    """Post one balanced GL pair through the foundation helper and return the
+    debit-leg gl_entry id. `amount` is a Decimal already rounded to currency.
+    A cost_center_id is attached to any income/expense leg (GL validation step 6
+    requires it on P&L accounts). No-ops when the foundation lacks gl_posting."""
+    if not HAS_GL:
+        return None
+
+    def _leg(acct, debit, credit):
+        e = {"account_id": acct, "debit": debit, "credit": credit}
+        if cost_center_id and _account_root_type(conn, acct) in ("income", "expense"):
+            e["cost_center_id"] = cost_center_id
+        return e
+
+    entries = [
+        _leg(debit_account_id, str(amount), "0"),
+        _leg(credit_account_id, "0", str(amount)),
+    ]
+    gl_ids = insert_gl_entries(
+        conn, entries,
+        voucher_type="journal_entry",
+        voucher_id=voucher_id,
+        posting_date=posting_date,
+        company_id=company_id,
+        remarks=remarks,
+        entry_set=entry_set,
+    )
+    return gl_ids[0] if gl_ids else None
+
+
 def record_security_deposit(conn, args):
     if not args.lease_id:
         err("--lease-id is required")
@@ -279,12 +395,37 @@ def record_security_deposit(conn, args):
          args.deposit_date, trust_account_id, args.interest_rate, "0",
          None, "held"))
 
+    # F19b: post the receipt GL — Dr Cash / Cr Security-Deposit Liability.
+    # Money was moving with no GL anywhere; now a balanced pair is posted and
+    # the previously-dead gl_entry_id column is wired.
+    company_id = lease["company_id"]
+    gl_entry_id = None
+    if HAS_GL:
+        cash_acct = _resolve_cash_account(conn, args, company_id, trust_account_id)
+        liab_acct = _resolve_liability_account(conn, args, company_id)
+        if cash_acct and liab_acct:
+            gl_entry_id = _post_deposit_pair(
+                conn, company_id, cash_acct, liab_acct, to_decimal(amount),
+                deposit_id, "deposit_receipt", args.deposit_date,
+                f"Security deposit received (lease {args.lease_id})")
+            conn.execute(
+                update_row("propertyclaw_security_deposit",
+                           data={"gl_entry_id": P(), "updated_at": now()},
+                           where={"id": P()}),
+                (gl_entry_id, deposit_id))
+        else:
+            sys.stderr.write(
+                f"[{SKILL}] deposit receipt GL skipped: cash/liability account "
+                f"unresolved; pass --cash-account-id / "
+                f"--deposit-liability-account-id or configure trust/company "
+                f"defaults\n")
+
     audit(conn, SKILL, "prop-record-security-deposit", "propertyclaw_security_deposit", deposit_id,
           new_values={"amount": amount, "lease_id": args.lease_id})
     conn.commit()
     ok({"security_deposit_id": deposit_id, "amount": amount,
         "trust_account_id": trust_account_id, "return_deadline_days": deadline_days,
-        "status": "held"})
+        "gl_entry_id": gl_entry_id, "status": "held"})
 
 
 # ---------------------------------------------------------------------------
@@ -319,13 +460,31 @@ def return_security_deposit(conn, args):
                    where={"id": P()}),
         (str(return_amount), today, new_status, args.security_deposit_id))
 
+    # F19b: post the return GL — Dr Security-Deposit Liability / Cr Cash. This
+    # reverses the receipt liability for the returned portion; combined with the
+    # deduction postings, a fully-settled deposit nets the liability to zero.
+    gl_entry_id = None
+    if HAS_GL and return_amount > to_decimal("0"):
+        company_id = _company_of_lease(conn, deposit["lease_id"])
+        cash_acct = _resolve_cash_account(conn, args, company_id, deposit["trust_account_id"])
+        liab_acct = _resolve_liability_account(conn, args, company_id)
+        if cash_acct and liab_acct:
+            gl_entry_id = _post_deposit_pair(
+                conn, company_id, liab_acct, cash_acct, return_amount,
+                args.security_deposit_id, "deposit_return", today,
+                "Security deposit returned")
+        else:
+            sys.stderr.write(
+                f"[{SKILL}] deposit return GL skipped: cash/liability account "
+                f"unresolved\n")
+
     audit(conn, SKILL, "prop-return-security-deposit", "propertyclaw_security_deposit",
           args.security_deposit_id,
           new_values={"return_amount": str(return_amount), "status": new_status})
     conn.commit()
     ok({"security_deposit_id": args.security_deposit_id,
         "return_amount": str(return_amount), "return_date": today,
-        "status": new_status})
+        "gl_entry_id": gl_entry_id, "status": new_status})
 
 
 # ---------------------------------------------------------------------------
@@ -373,9 +532,30 @@ def add_deposit_deduction(conn, args):
                    where={"id": P()}),
         (new_total, args.security_deposit_id))
 
+    # F19b: a deduction is a partial forfeiture — the landlord retains part of
+    # the deposit. Post Dr Security-Deposit Liability / Cr Other Income so the
+    # liability is drawn down and the retained amount is recognized as income.
+    gl_entry_id = None
+    if HAS_GL:
+        company_id = _company_of_lease(conn, deposit["lease_id"])
+        liab_acct = _resolve_liability_account(conn, args, company_id)
+        income_acct = _resolve_income_account(conn, args, company_id)
+        cost_center = _resolve_cost_center(conn, args, company_id)
+        if liab_acct and income_acct and cost_center:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            gl_entry_id = _post_deposit_pair(
+                conn, company_id, liab_acct, income_acct, amount,
+                args.security_deposit_id, f"deposit_deduction:{deduction_id}", today,
+                f"Security-deposit deduction ({args.deduction_type})",
+                cost_center_id=cost_center)
+        else:
+            sys.stderr.write(
+                f"[{SKILL}] deposit deduction GL skipped: liability/income "
+                f"account or cost center unresolved\n")
+
     conn.commit()
     ok({"deduction_id": deduction_id, "amount": str(amount),
-        "total_deductions": new_total})
+        "total_deductions": new_total, "gl_entry_id": gl_entry_id})
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +647,62 @@ def generate_1099_report(conn, args):
 
 
 # ---------------------------------------------------------------------------
+# forfeit-security-deposit  (F19b — makes the 'forfeited' status reachable)
+# ---------------------------------------------------------------------------
+def forfeit_security_deposit(conn, args):
+    if not args.security_deposit_id:
+        err("--security-deposit-id is required")
+
+    deposit = conn.execute(Q.from_(Table("propertyclaw_security_deposit")).select(Table("propertyclaw_security_deposit").star).where(Field("id") == P()).get_sql(), (args.security_deposit_id,)).fetchone()
+    if not deposit:
+        err(f"Security deposit {args.security_deposit_id} not found")
+    if deposit["status"] not in ("held", "partially_returned"):
+        err(f"Deposit must be 'held' or 'partially_returned' to forfeit "
+            f"(current: {deposit['status']})")
+
+    deposit_amount = to_decimal(deposit["amount"])
+    deduction_total = to_decimal(deposit["deduction_amount"])
+    returned = to_decimal(deposit["return_amount"]) if deposit["return_amount"] else Decimal("0")
+    remaining = round_currency(deposit_amount - deduction_total - returned)
+    if remaining <= Decimal("0"):
+        err(f"No remaining balance to forfeit (amount {deposit_amount}, "
+            f"deductions {deduction_total}, returned {returned})")
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    conn.execute(
+        update_row("propertyclaw_security_deposit",
+                   data={"status": P(), "updated_at": now()},
+                   where={"id": P()}),
+        ("forfeited", args.security_deposit_id))
+
+    # F19b: forfeiture GL — Dr Security-Deposit Liability / Cr Other Income for
+    # the remaining balance. Draws the liability to zero and recognizes income.
+    gl_entry_id = None
+    if HAS_GL:
+        company_id = _company_of_lease(conn, deposit["lease_id"])
+        liab_acct = _resolve_liability_account(conn, args, company_id)
+        income_acct = _resolve_income_account(conn, args, company_id)
+        cost_center = _resolve_cost_center(conn, args, company_id)
+        if liab_acct and income_acct and cost_center:
+            gl_entry_id = _post_deposit_pair(
+                conn, company_id, liab_acct, income_acct, remaining,
+                args.security_deposit_id, "deposit_forfeit", today,
+                "Security deposit forfeited", cost_center_id=cost_center)
+        else:
+            sys.stderr.write(
+                f"[{SKILL}] deposit forfeit GL skipped: liability/income "
+                f"account or cost center unresolved\n")
+
+    audit(conn, SKILL, "prop-forfeit-security-deposit", "propertyclaw_security_deposit",
+          args.security_deposit_id,
+          new_values={"forfeited_amount": str(remaining), "status": "forfeited"})
+    conn.commit()
+    ok({"security_deposit_id": args.security_deposit_id,
+        "forfeited_amount": str(remaining), "gl_entry_id": gl_entry_id,
+        "status": "forfeited"})
+
+
+# ---------------------------------------------------------------------------
 # Action Router
 # ---------------------------------------------------------------------------
 ACTIONS = {
@@ -478,6 +714,7 @@ ACTIONS = {
     "prop-record-security-deposit": record_security_deposit,
     "prop-return-security-deposit": return_security_deposit,
     "prop-add-deposit-deduction": add_deposit_deduction,
+    "prop-forfeit-security-deposit": forfeit_security_deposit,
     "prop-list-deposit-deductions": list_deposit_deductions,
     "prop-generate-1099-report": generate_1099_report,
 }

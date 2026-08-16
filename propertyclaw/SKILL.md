@@ -1,7 +1,7 @@
 ---
 name: propertyclaw
 version: 1.0.0
-description: AI-native property management for US landlords. 102 actions across 8 domains -- properties, units, leases, tenants, maintenance, trust accounting, vacancy/listings, and tenant portal. FCRA-compliant screening, state-specific late fees, 1099 reporting.
+description: AI-native property management for US landlords. 103 actions across 8 domains -- properties, units, leases, tenants, maintenance, trust accounting, vacancy/listings, and tenant portal. FCRA-compliant screening, state-specific late fees, 1099 reporting.
 author: AvanSaber
 homepage: https://github.com/avansaber/propertyclaw
 source: https://github.com/avansaber/propertyclaw
@@ -48,7 +48,7 @@ python3 {baseDir}/scripts/db_query.py --action status
 --action prop-activate-lease --lease-id {id}
 ```
 
-## All 102 Actions
+## All 103 Actions
 
 ### Properties & Units (14 actions)
 | Action | Description |
@@ -122,7 +122,7 @@ python3 {baseDir}/scripts/db_query.py --action status
 | `prop-add-inspection-item` | Add inspection checklist item |
 | `prop-list-inspection-items` | List inspection items |
 
-### Accounting & Trust (13 actions)
+### Accounting & Trust (14 actions)
 | Action | Description |
 |--------|-------------|
 | `prop-setup-trust-account` | Set up trust account |
@@ -136,7 +136,8 @@ python3 {baseDir}/scripts/db_query.py --action status
 | `prop-list-owner-statements` | List owner statements |
 | `prop-record-security-deposit` | Record security deposit |
 | `prop-return-security-deposit` | Return security deposit |
-| `prop-add-deposit-deduction` | Add deposit deduction |
+| `prop-add-deposit-deduction` | Add deposit deduction (posts Dr Liability / Cr Income) |
+| `prop-forfeit-security-deposit` | Forfeit remaining deposit balance (posts Dr Liability / Cr Income; sets status forfeited) |
 | `prop-list-deposit-deductions` | List deposit deductions |
 
 ### Rent & Payments (5 actions)
